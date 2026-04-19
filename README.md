@@ -1,11 +1,14 @@
-# flomo-pipeline
+# flomo-transcriber
 
-发现自己的flomo记了几千条，上百万字，但是无法被LLM阅读？Introducing `flomo-transcriber`! 
-本项目可以轻松地把本地 Flomo 导出内容整理成干净、可检查、可交给 LLM 读取的数据。包括memo的文字和图片文字描述！超完整！
+把你的 Flomo 记忆库变成 LLM 能读的资料包。
+
+很多人把几千条 Flomo 记成了自己的长期记忆，但导出后很难直接交给模型处理：文字分散，图片没人读，月份不好拆，来源也不好追。`flomo-transcriber` 解决的就是这件事。
+
+它会把本地 Flomo 导出内容整理成干净、可检查、可重复生成的数据。memo 原文会保留，图片里的文字和画面信息也可以转成文本，最后生成外部 LLM 可以直接读取的 chunk 文件。
 
 它做的事很具体：
 
-1. 从 Flomo HTML 导出里提取 memo 和图片引用。
+1. 从 Flomo HTML 导出里提取 memo 和图片。
 2. 把结果保存成稳定的 JSONL 文件。
 3. 可选：用本地 LM Studio 视觉模型读取图片里的文字和画面信息。
 4. 按月份合并 memo 和图片描述。
@@ -308,6 +311,8 @@ src/flomo_pipeline/
 ├── preview/
 └── common/
 ```
+
+说明：项目的公开名称是 `flomo-transcriber`。内部 Python import 包仍叫 `flomo_pipeline`，这是为了保持现有脚本和测试兼容。
 
 常用命令：
 

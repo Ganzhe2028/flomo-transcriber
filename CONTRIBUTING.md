@@ -1,6 +1,6 @@
 # Contributing
 
-This repository keeps the pipeline local-file based and stage oriented.
+This repository keeps flomo-transcriber local-file based and stage oriented.
 
 ## Development
 

@@ -22,7 +22,7 @@ def _add_month(command: list[str], month: str | None) -> list[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the local flomo-pipeline stages")
+    parser = argparse.ArgumentParser(description="Run the local flomo-transcriber stages")
     parser.add_argument("--store-root", type=Path, default=Path("store"))
     parser.add_argument("--monthly-root", type=Path, default=Path("monthly"))
     parser.add_argument("--chunks-root", type=Path, default=Path("llm_chunks"))
