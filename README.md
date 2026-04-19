@@ -1,6 +1,7 @@
 # flomo-pipeline
 
-把本地 Flomo 导出内容整理成干净、可检查、可交给 LLM 读取的数据。
+发现自己的flomo记了几千条，上百万字，但是无法被LLM阅读？Introducing `flomo-transcriber`! 
+本项目可以轻松地把本地 Flomo 导出内容整理成干净、可检查、可交给 LLM 读取的数据。包括memo的文字和图片文字描述！超完整！
 
 它做的事很具体：
 
