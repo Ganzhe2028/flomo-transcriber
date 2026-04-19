@@ -1,5 +1,7 @@
 # flomo-transcriber
 
+[English](README.en.md)
+
 把你的 Flomo 记忆库变成 LLM 能读的资料包。
 
 很多人把几千条 Flomo 记成了自己的长期记忆，但导出后很难直接交给模型处理：文字分散，图片没人读，月份不好拆，来源也不好追。`flomo-transcriber` 解决的就是这件事。
@@ -350,7 +352,7 @@ make test
 
 Agent 接手时先读这三处：
 
-1. `README.md`
+1. `README.md` 或 `README.en.md`
 2. `pyproject.toml`
 3. `tests/`
 
