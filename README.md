@@ -78,10 +78,20 @@ python scripts/validate_enriched_images.py --store-root store
 如果你要用 LM Studio 读取真实图片内容，先启动 LM Studio 的 OpenAI-compatible server，然后设置：
 
 ```bash
-export FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
-export FLOMO_VLM_MODEL="<你的视觉模型名>"
-export FLOMO_VLM_TIMEOUT_SECONDS="180"
-export FLOMO_VLM_MAX_TOKENS="1024"
+$env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
+$env:FLOMO_VLM_MODEL="<你的视觉模型名>"
+$env:FLOMO_VLM_TIMEOUT_SECONDS="180"
+$env:FLOMO_VLM_MAX_TOKENS="1024"
+```
+
+e.g.
+
+```bash
+$env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
+$env:FLOMO_VLM_MODEL="google/gemma-4-e4b"
+$env:FLOMO_VLM_TIMEOUT_SECONDS="720"
+$env:FLOMO_VLM_MAX_TOKENS="1024"
+d:\New\flomo-transcriber\scripts\30_stage2_4_prepare_context.bat
 ```
 
 先探测一张图片：
@@ -89,6 +99,12 @@ export FLOMO_VLM_MAX_TOKENS="1024"
 ```bash
 python scripts/probe_lmstudio_vlm.py --image store/images/2025/2025-12/example.png
 ```
+
+如果探测返回 `connection refused` 或 `WinError 10061`，表示脚本没有连上 LM Studio 服务，不是图片解析失败。检查：
+
+- LM Studio 的 OpenAI-compatible server 已经启动。
+- `FLOMO_VLM_BASE_URL` 的 host/port 和 LM Studio 显示的一致，常见值是 `http://127.0.0.1:1234/v1`。
+- 视觉模型已在 LM Studio 中加载，`FLOMO_VLM_MODEL` 与模型名一致。
 
 探测成功后再跑整月：
 
@@ -140,10 +156,10 @@ python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunk
 模型参与的 Stage 2：
 
 ```bash
-export FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
-export FLOMO_VLM_MODEL="<你的视觉模型名>"
-export FLOMO_VLM_TIMEOUT_SECONDS="180"
-export FLOMO_VLM_MAX_TOKENS="1024"
+$env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
+$env:FLOMO_VLM_MODEL="<你的视觉模型名>"
+$env:FLOMO_VLM_TIMEOUT_SECONDS="180"
+$env:FLOMO_VLM_MAX_TOKENS="1024"
 
 scripts/00_probe_lmstudio_image.sh store/images/2025/2025-12/example.png
 scripts/10_stage2_enrich_lmstudio.sh 2025-12
@@ -315,9 +331,9 @@ python scripts/validate_reports.py --chunks-root llm_chunks --reports-root repor
 用 LM Studio 文本模型生成 report：
 
 ```bash
-export FLOMO_LLM_BASE_URL="http://127.0.0.1:1234/v1"
-export FLOMO_LLM_MODEL="<你的文本模型名>"
-export FLOMO_LLM_TIMEOUT_SECONDS="120"
+$env:FLOMO_LLM_BASE_URL="http://127.0.0.1:1234/v1"
+$env:FLOMO_LLM_MODEL="<你的文本模型名>"
+$env:FLOMO_LLM_TIMEOUT_SECONDS="120"
 
 python scripts/build_reports.py --chunks-root llm_chunks --reports-root reports --provider lmstudio --month 2025-12 --overwrite
 python scripts/validate_reports.py --chunks-root llm_chunks --reports-root reports --month 2025-12 --summary

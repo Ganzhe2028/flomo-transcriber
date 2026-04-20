@@ -27,6 +27,7 @@ def main() -> None:
     )
 
     print(f"Status: {call.result.status}")
+    print(f"Base URL: {provider.base_url or '(unset)'}")
     print(f"Model: {provider.model_name}")
     print(f"Prompt version: {provider.prompt_version}")
     print(f"OCR text: {call.result.ocr_text}")

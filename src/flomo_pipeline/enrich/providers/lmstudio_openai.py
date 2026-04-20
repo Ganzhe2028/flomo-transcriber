@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import errno
 import json
 import mimetypes
 import os
@@ -219,7 +220,9 @@ class LMStudioEnrichmentProvider:
         except (TimeoutError, socket.timeout) as exc:
             raise LMStudioProviderError("Model request timed out") from exc
         except urllib.error.URLError as exc:
-            raise LMStudioProviderError(f"HTTP request failed: {exc.reason}") from exc
+            if _is_timeout_reason(exc.reason):
+                raise LMStudioProviderError("Model request timed out") from exc
+            raise LMStudioProviderError(_format_url_error(endpoint, exc.reason)) from exc
 
         try:
             parsed_response = json.loads(response_text)
@@ -300,3 +303,29 @@ def _parse_json_object(content: str) -> Any:
             ):
                 return parsed
         raise original_exc
+
+
+def _format_url_error(endpoint: str, reason: Any) -> str:
+    if _is_connection_refused(reason):
+        return (
+            f"Could not connect to LM Studio at {endpoint} (connection refused). "
+            "Start LM Studio's OpenAI-compatible server and verify "
+            "FLOMO_VLM_BASE_URL matches its host and port. "
+            f"Underlying error: {reason}"
+        )
+    return f"HTTP request failed for {endpoint}: {reason}"
+
+
+def _is_connection_refused(reason: Any) -> bool:
+    if isinstance(reason, ConnectionRefusedError):
+        return True
+    if not isinstance(reason, OSError):
+        return False
+    return (
+        getattr(reason, "errno", None) == errno.ECONNREFUSED
+        or getattr(reason, "winerror", None) == 10061
+    )
+
+
+def _is_timeout_reason(reason: Any) -> bool:
+    return isinstance(reason, (TimeoutError, socket.timeout)) or str(reason) == "timed out"

@@ -90,6 +90,12 @@ Probe one image first:
 python scripts/probe_lmstudio_vlm.py --image store/images/2025/2025-12/example.png
 ```
 
+If the probe returns `connection refused` or `WinError 10061`, the script could not reach LM Studio. This is not an image parsing failure. Check:
+
+- LM Studio's OpenAI-compatible server is running.
+- `FLOMO_VLM_BASE_URL` matches the host and port shown by LM Studio. The common value is `http://127.0.0.1:1234/v1`.
+- The vision model is loaded in LM Studio, and `FLOMO_VLM_MODEL` matches the model name.
+
 Then process one month:
 
 ```bash

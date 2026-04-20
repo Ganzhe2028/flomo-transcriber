@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from flomo_pipeline.enrich import ImageEnrichmentRunner
@@ -96,6 +98,32 @@ def test_lmstudio_provider_http_failure_returns_failed(tmp_path: Path) -> None:
     assert result.status == "failed"
     assert result.error_message is not None
     assert "HTTP 500" in result.error_message
+
+
+def test_lmstudio_provider_connection_refused_returns_actionable_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    image_path = _write_probe_image(tmp_path)
+
+    def raise_connection_refused(*args, **kwargs):
+        raise urllib.error.URLError(ConnectionRefusedError(10061, "connection refused"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", raise_connection_refused)
+
+    provider = LMStudioEnrichmentProvider(
+        base_url="http://127.0.0.1:1234/v1",
+        model_name="local-vlm",
+        timeout_seconds=1,
+    )
+
+    result = provider.enrich(image_path, image_id="image-1", memo_id="memo-1")
+
+    assert result.status == "failed"
+    assert result.error_message is not None
+    assert "Could not connect to LM Studio" in result.error_message
+    assert "/chat/completions" in result.error_message
+    assert "FLOMO_VLM_BASE_URL" in result.error_message
 
 
 def test_lmstudio_provider_timeout_returns_failed(tmp_path: Path) -> None:
