@@ -161,7 +161,16 @@ scripts/20_stage3_4_build_context.sh
 
 ### Windows
 
-在 CMD 或 PowerShell 里先设置 LM Studio 环境变量：
+在 PowerShell 里先设置 LM Studio 环境变量：
+
+```powershell
+$env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
+$env:FLOMO_VLM_MODEL="<你的视觉模型名>"
+$env:FLOMO_VLM_TIMEOUT_SECONDS="180"
+$env:FLOMO_VLM_MAX_TOKENS="1024"
+```
+
+在 CMD 里使用：
 
 ```bat
 set FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
@@ -244,6 +253,8 @@ Stage 1-4 是推荐主流程。Stage 5 是可选功能；如果你要用 OpenRou
 - `.mp4`
 - `.m4a`
 - 其他非静态图片类型
+
+图片描述会覆盖照片、物体、场景、图表、界面布局、diagram 和 screenshot 等可见非文字内容。
 
 支持的 provider：
 

@@ -161,7 +161,16 @@ scripts/20_stage3_4_build_context.sh
 
 ### Windows
 
-Set the LM Studio environment variables in CMD or PowerShell:
+Set the LM Studio environment variables in PowerShell:
+
+```powershell
+$env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
+$env:FLOMO_VLM_MODEL="<your-vision-model-name>"
+$env:FLOMO_VLM_TIMEOUT_SECONDS="180"
+$env:FLOMO_VLM_MAX_TOKENS="1024"
+```
+
+In CMD, use:
 
 ```bat
 set FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
@@ -244,6 +253,8 @@ Explicitly skipped:
 - `.mp4`
 - `.m4a`
 - other non-static image types
+
+Visual descriptions cover visible non-text content such as photos, objects, scenes, charts, UI layout, diagrams, and screenshots.
 
 Providers:
 

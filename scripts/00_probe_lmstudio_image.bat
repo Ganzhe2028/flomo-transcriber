@@ -16,15 +16,20 @@ if "%IMAGE_PATH%"=="" (
 
 if "%FLOMO_VLM_BASE_URL%"=="" (
   echo Missing FLOMO_VLM_BASE_URL, for example: http://127.0.0.1:1234/v1
+  echo PowerShell: $env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
+  echo CMD: set FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
   exit /b 2
 )
 
 if "%FLOMO_VLM_MODEL%"=="" (
-  echo Missing FLOMO_VLM_MODEL, for example: google/gemma-4-e4b:2
+  echo Missing FLOMO_VLM_MODEL, for example: google/gemma-4-e4b
+  echo PowerShell: $env:FLOMO_VLM_MODEL="google/gemma-4-e4b"
+  echo CMD: set FLOMO_VLM_MODEL=google/gemma-4-e4b
   exit /b 2
 )
 
 if "%FLOMO_VLM_TIMEOUT_SECONDS%"=="" set "FLOMO_VLM_TIMEOUT_SECONDS=180"
+if "%FLOMO_VLM_MAX_TOKENS%"=="" set "FLOMO_VLM_MAX_TOKENS=1024"
 
 "%PYTHON%" scripts\probe_lmstudio_vlm.py --image "%IMAGE_PATH%"
 exit /b %ERRORLEVEL%

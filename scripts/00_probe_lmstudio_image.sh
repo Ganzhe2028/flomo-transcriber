@@ -19,10 +19,11 @@ if [[ -z "${FLOMO_VLM_BASE_URL:-}" ]]; then
 fi
 
 if [[ -z "${FLOMO_VLM_MODEL:-}" ]]; then
-  echo "Missing FLOMO_VLM_MODEL, for example: google/gemma-4-e4b:2"
+  echo "Missing FLOMO_VLM_MODEL, for example: google/gemma-4-e4b"
   exit 2
 fi
 
 export FLOMO_VLM_TIMEOUT_SECONDS="${FLOMO_VLM_TIMEOUT_SECONDS:-180}"
+export FLOMO_VLM_MAX_TOKENS="${FLOMO_VLM_MAX_TOKENS:-1024}"
 
 "$PYTHON_BIN" scripts/probe_lmstudio_vlm.py --image "$IMAGE_PATH"

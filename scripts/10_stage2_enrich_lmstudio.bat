@@ -8,29 +8,45 @@ if "%PYTHON%"=="" set "PYTHON=python"
 if "%STORE_ROOT%"=="" set "STORE_ROOT=store"
 set "MONTH_ARG=%~1"
 if "%MONTH_ARG%"=="" set "MONTH_ARG=%MONTH%"
-if "%MONTH_ARG%"=="" set "MONTH_ARG=2025-12"
 if "%OVERWRITE_ENRICH%"=="" set "OVERWRITE_ENRICH=0"
 
 if "%FLOMO_VLM_BASE_URL%"=="" (
   echo Missing FLOMO_VLM_BASE_URL, for example: http://127.0.0.1:1234/v1
+  echo PowerShell: $env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
+  echo CMD: set FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
   exit /b 2
 )
 
 if "%FLOMO_VLM_MODEL%"=="" (
-  echo Missing FLOMO_VLM_MODEL, for example: google/gemma-4-e4b:2
+  echo Missing FLOMO_VLM_MODEL, for example: google/gemma-4-e4b
+  echo PowerShell: $env:FLOMO_VLM_MODEL="google/gemma-4-e4b"
+  echo CMD: set FLOMO_VLM_MODEL=google/gemma-4-e4b
   exit /b 2
 )
 
 if "%FLOMO_VLM_TIMEOUT_SECONDS%"=="" set "FLOMO_VLM_TIMEOUT_SECONDS=180"
+if "%FLOMO_VLM_MAX_TOKENS%"=="" set "FLOMO_VLM_MAX_TOKENS=1024"
 
 echo Stage 2: image enrich via LM Studio
-echo month=%MONTH_ARG%
+if "%MONTH_ARG%"=="" (
+  echo month=all
+) else (
+  echo month=%MONTH_ARG%
+)
 echo store_root=%STORE_ROOT%
 
 if "%OVERWRITE_ENRICH%"=="1" (
-  "%PYTHON%" scripts\enrich_images.py --store-root "%STORE_ROOT%" --provider lmstudio --month "%MONTH_ARG%" --overwrite
+  if "%MONTH_ARG%"=="" (
+    "%PYTHON%" scripts\enrich_images.py --store-root "%STORE_ROOT%" --provider lmstudio --overwrite
+  ) else (
+    "%PYTHON%" scripts\enrich_images.py --store-root "%STORE_ROOT%" --provider lmstudio --month "%MONTH_ARG%" --overwrite
+  )
 ) else (
-  "%PYTHON%" scripts\enrich_images.py --store-root "%STORE_ROOT%" --provider lmstudio --month "%MONTH_ARG%"
+  if "%MONTH_ARG%"=="" (
+    "%PYTHON%" scripts\enrich_images.py --store-root "%STORE_ROOT%" --provider lmstudio
+  ) else (
+    "%PYTHON%" scripts\enrich_images.py --store-root "%STORE_ROOT%" --provider lmstudio --month "%MONTH_ARG%"
+  )
 )
 if errorlevel 1 exit /b %ERRORLEVEL%
 

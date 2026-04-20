@@ -23,7 +23,7 @@ Required JSON shape:
 
 Rules:
 - ocr_text: visible readable text only. Use an empty string if there is no readable text.
-- visual_description: important visible non-text content only. Use an empty string if there is none.
+- visual_description: visible non-text content, including photos, objects, scenes, charts, UI layout, diagrams, and screenshots. Use an empty string only if there is no meaningful non-text content.
 - Do not summarize meaning, infer emotions, add context, or combine the two fields.
 - For dense screenshots, keep the most important visible text in reading order and do not repeat duplicated blocks.
 - Do not return Markdown, prose, or code fences.
