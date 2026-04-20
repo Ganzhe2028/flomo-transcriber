@@ -78,6 +78,7 @@ python scripts/validate_enriched_images.py --store-root store
 export FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
 export FLOMO_VLM_MODEL="<你的视觉模型名>"
 export FLOMO_VLM_TIMEOUT_SECONDS="180"
+export FLOMO_VLM_MAX_TOKENS="1024"
 ```
 
 先探测一张图片：
@@ -97,6 +98,12 @@ python scripts/validate_enriched_images.py --store-root store
 
 ```bash
 python scripts/enrich_images.py --store-root store --provider lmstudio
+```
+
+如果本地模型服务允许并发，可以加 `--workers` 并行处理图片，例如：
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --workers 4
 ```
 
 ### 5. 生成给外部 LLM 读取的 chunks
@@ -133,6 +140,7 @@ python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunk
 export FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
 export FLOMO_VLM_MODEL="<你的视觉模型名>"
 export FLOMO_VLM_TIMEOUT_SECONDS="180"
+export FLOMO_VLM_MAX_TOKENS="1024"
 
 scripts/00_probe_lmstudio_image.sh store/images/2025/2025-12/example.png
 scripts/10_stage2_enrich_lmstudio.sh 2025-12
@@ -159,6 +167,7 @@ scripts/20_stage3_4_build_context.sh
 set FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
 set FLOMO_VLM_MODEL=<你的视觉模型名>
 set FLOMO_VLM_TIMEOUT_SECONDS=180
+set FLOMO_VLM_MAX_TOKENS=1024
 ```
 
 单图探测：
@@ -247,6 +256,7 @@ Stage 1-4 是推荐主流程。Stage 5 是可选功能；如果你要用 OpenRou
 - `FLOMO_VLM_MODEL`：本地视觉模型名
 - `FLOMO_VLM_API_KEY`：可选
 - `FLOMO_VLM_TIMEOUT_SECONDS`：可选，默认 `60`
+- `FLOMO_VLM_MAX_TOKENS`：可选，默认 `1024`，限制单张图片的模型输出长度
 
 图片增强失败不会中断整个流程。脚本会先完整跑一遍，再只重试失败项，最多重试 3 轮。仍失败的图片会保留 `status=failed` 和失败原因。
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -82,7 +83,10 @@ class ImageEnrichmentRunner:
         run_id: str | None = None,
         project_root: Path | None = None,
         max_failed_retries: int = MAX_FAILED_RETRIES,
+        workers: int = 1,
     ) -> None:
+        if workers <= 0:
+            raise ValueError("workers must be positive")
         self.store_root = store_root
         self.provider = provider
         self.month = month
@@ -90,6 +94,7 @@ class ImageEnrichmentRunner:
         self.run_id = run_id or uuid.uuid4().hex
         self.project_root = project_root or store_root.parent
         self.max_failed_retries = max_failed_retries
+        self.workers = workers
         self.memo_path = store_root / "memo.raw.jsonl"
         self.image_path = store_root / "image.raw.jsonl"
         self.enriched_path = store_root / "image.enriched.jsonl"
@@ -116,27 +121,12 @@ class ImageEnrichmentRunner:
         ]
         stats.total = len(target_images)
 
-        for index, image_record in enumerate(target_images, start=1):
-            image_id = str(image_record["image_id"])
-            existing = existing_records.get(image_id)
-            if existing is not None and existing.status == "success" and not self.overwrite:
-                processed_records.append(existing)
-                stats.skipped += 1
-                print(f"[{index}/{stats.total}] {image_id} skipped (existing success)")
-                continue
-
-            memo_record = memos_by_id.get(str(image_record["memo_id"]))
-            enriched_record = self._enrich_one(image_record, memo_record)
-            processed_records.append(enriched_record)
-
-            if enriched_record.status == "success":
-                stats.success += 1
-            elif enriched_record.status == "skipped":
-                stats.skipped += 1
-            else:
-                stats.failed += 1
-
-            print(f"[{index}/{stats.total}] {image_id} {enriched_record.status}")
+        processed_records = self._process_initial_records(
+            target_images=target_images,
+            existing_records=existing_records,
+            memos_by_id=memos_by_id,
+            stats=stats,
+        )
 
         self._retry_failed_records(processed_records, target_images, memos_by_id, stats)
 
@@ -153,6 +143,100 @@ class ImageEnrichmentRunner:
         final_records.sort(key=lambda record: record.image_id)
         _write_jsonl(self.enriched_path, final_records)
         return final_records, stats
+
+    def _process_initial_records(
+        self,
+        *,
+        target_images: list[dict[str, Any]],
+        existing_records: dict[str, EnrichedImageRecord],
+        memos_by_id: dict[str, dict[str, Any]],
+        stats: EnrichStats,
+    ) -> list[EnrichedImageRecord]:
+        if self.workers == 1:
+            return self._process_initial_records_sequential(
+                target_images=target_images,
+                existing_records=existing_records,
+                memos_by_id=memos_by_id,
+                stats=stats,
+            )
+        return self._process_initial_records_parallel(
+            target_images=target_images,
+            existing_records=existing_records,
+            memos_by_id=memos_by_id,
+            stats=stats,
+        )
+
+    def _process_initial_records_sequential(
+        self,
+        *,
+        target_images: list[dict[str, Any]],
+        existing_records: dict[str, EnrichedImageRecord],
+        memos_by_id: dict[str, dict[str, Any]],
+        stats: EnrichStats,
+    ) -> list[EnrichedImageRecord]:
+        processed_records: list[EnrichedImageRecord] = []
+        for index, image_record in enumerate(target_images, start=1):
+            image_id = str(image_record["image_id"])
+            existing = existing_records.get(image_id)
+            if existing is not None and existing.status == "success" and not self.overwrite:
+                processed_records.append(existing)
+                stats.skipped += 1
+                print(f"[{index}/{stats.total}] {image_id} skipped (existing success)", flush=True)
+                continue
+
+            memo_record = memos_by_id.get(str(image_record["memo_id"]))
+            enriched_record = self._enrich_one(image_record, memo_record)
+            processed_records.append(enriched_record)
+            self._update_stats(stats, enriched_record)
+
+            print(f"[{index}/{stats.total}] {image_id} {enriched_record.status}", flush=True)
+        return processed_records
+
+    def _process_initial_records_parallel(
+        self,
+        *,
+        target_images: list[dict[str, Any]],
+        existing_records: dict[str, EnrichedImageRecord],
+        memos_by_id: dict[str, dict[str, Any]],
+        stats: EnrichStats,
+    ) -> list[EnrichedImageRecord]:
+        processed_records: list[EnrichedImageRecord | None] = [None] * len(target_images)
+        futures: dict[Future[EnrichedImageRecord], tuple[int, str]] = {}
+
+        with ThreadPoolExecutor(max_workers=self.workers) as executor:
+            for index, image_record in enumerate(target_images, start=1):
+                image_id = str(image_record["image_id"])
+                existing = existing_records.get(image_id)
+                if existing is not None and existing.status == "success" and not self.overwrite:
+                    processed_records[index - 1] = existing
+                    stats.skipped += 1
+                    print(
+                        f"[{index}/{stats.total}] {image_id} skipped (existing success)",
+                        flush=True,
+                    )
+                    continue
+
+                memo_record = memos_by_id.get(str(image_record["memo_id"]))
+                future = executor.submit(self._enrich_one, image_record, memo_record)
+                futures[future] = (index, image_id)
+
+            for future in as_completed(futures):
+                index, image_id = futures[future]
+                enriched_record = future.result()
+                processed_records[index - 1] = enriched_record
+                self._update_stats(stats, enriched_record)
+                print(f"[{index}/{stats.total}] {image_id} {enriched_record.status}", flush=True)
+
+        return [record for record in processed_records if record is not None]
+
+    @staticmethod
+    def _update_stats(stats: EnrichStats, enriched_record: EnrichedImageRecord) -> None:
+        if enriched_record.status == "success":
+            stats.success += 1
+        elif enriched_record.status == "skipped":
+            stats.skipped += 1
+        else:
+            stats.failed += 1
 
     def _retry_failed_records(
         self,
@@ -180,7 +264,8 @@ class ImageEnrichmentRunner:
             print(
                 "Retry "
                 f"{retry_round}/{self.max_failed_retries}: "
-                f"{len(failed_positions)} failed image(s)"
+                f"{len(failed_positions)} failed image(s)",
+                flush=True,
             )
 
             for retry_index, (position, failed_record) in enumerate(failed_positions, start=1):
@@ -201,7 +286,8 @@ class ImageEnrichmentRunner:
                 print(
                     f"[retry {retry_round}/{self.max_failed_retries} "
                     f"{retry_index}/{len(failed_positions)}] "
-                    f"{retried_record.image_id} {retried_record.status}"
+                    f"{retried_record.image_id} {retried_record.status}",
+                    flush=True,
                 )
 
         stats.retry_failed = self._count_failed(processed_records, target_images)

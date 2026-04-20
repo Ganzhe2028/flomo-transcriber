@@ -18,6 +18,7 @@ def main() -> None:
     parser.add_argument("--provider", default="mock", help="Enrichment provider name")
     parser.add_argument("--month", default=None, help="Process only one month, e.g. 2026-01")
     parser.add_argument("--overwrite", action="store_true", help="Reprocess existing successful image_id records")
+    parser.add_argument("--workers", type=int, default=1, help="Number of images to process concurrently")
     args = parser.parse_args()
 
     store_root = args.store_root.resolve()
@@ -33,6 +34,7 @@ def main() -> None:
         provider=provider,
         month=args.month,
         overwrite=args.overwrite,
+        workers=args.workers,
     ).run()
 
     print(stats.format_summary())

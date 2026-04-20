@@ -157,6 +157,28 @@ def test_enrich_runner_handles_success_skipped_failed_and_stats(tmp_path: Path) 
     assert stats.failed == 1
 
 
+def test_enrich_runner_parallel_workers_keep_records_and_stats(tmp_path: Path) -> None:
+    store_root = _setup_enrich_store(tmp_path)
+
+    records, stats = ImageEnrichmentRunner(
+        store_root=store_root,
+        provider=MockEnrichmentProvider(),
+        project_root=tmp_path,
+        run_id="run-1",
+        workers=2,
+    ).run()
+
+    assert [record.image_id for record in records] == [
+        "flomo-example-20260304--0001--01",
+        "flomo-example-20260304--0001--02",
+        "flomo-example-20260304--0001--03",
+    ]
+    assert stats.total == 3
+    assert stats.success == 1
+    assert stats.skipped == 1
+    assert stats.failed == 1
+
+
 def test_enrich_runner_skips_existing_success_by_default(tmp_path: Path) -> None:
     store_root = _setup_enrich_store(tmp_path)
 

@@ -43,11 +43,40 @@ def test_lmstudio_provider_success_parses_fields_and_sends_image(tmp_path: Path)
     request_payload = server.requests[0]
     assert request_payload["model"] == "local-vlm"
     assert request_payload["temperature"] == 0
+    assert request_payload["max_tokens"] == 1024
+    assert request_payload["response_format"]["type"] == "json_schema"
     assert request_payload["stream"] is False
     message_content = request_payload["messages"][0]["content"]
     assert message_content[0]["type"] == "text"
     assert message_content[1]["type"] == "image_url"
     assert message_content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_lmstudio_provider_accepts_custom_max_tokens_and_reasoning_prefix(
+    tmp_path: Path,
+) -> None:
+    image_path = _write_probe_image(tmp_path)
+    content = (
+        "<|channel>thought\nThinking Process with {\"ocr_text\":\"bad\"}<channel|>"
+        '{"ocr_text":"hello world","visual_description":"A screenshot."}'
+    )
+
+    with run_fake_lmstudio_server(
+        [FakeHTTPResponse(status=200, body=lmstudio_chat_response(content))]
+    ) as server:
+        provider = LMStudioEnrichmentProvider(
+            base_url=server.url,
+            model_name="local-vlm",
+            timeout_seconds=2,
+            max_tokens=256,
+        )
+
+        result = provider.enrich(image_path, image_id="image-1", memo_id="memo-1")
+
+    assert result.status == "success"
+    assert result.ocr_text == "hello world"
+    assert result.visual_description == "A screenshot."
+    assert server.requests[0]["max_tokens"] == 256
 
 
 def test_lmstudio_provider_http_failure_returns_failed(tmp_path: Path) -> None:

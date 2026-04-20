@@ -25,8 +25,28 @@ Rules:
 - ocr_text: visible readable text only. Use an empty string if there is no readable text.
 - visual_description: important visible non-text content only. Use an empty string if there is none.
 - Do not summarize meaning, infer emotions, add context, or combine the two fields.
+- For dense screenshots, keep the most important visible text in reading order and do not repeat duplicated blocks.
 - Do not return Markdown, prose, or code fences.
 """
+
+RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "flomo_image_enrichment",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "ocr_text": {"type": "string"},
+                "visual_description": {"type": "string"},
+            },
+            "required": ["ocr_text", "visual_description"],
+        },
+    },
+}
+
+DEFAULT_MAX_TOKENS = 1024
 
 
 @dataclass(frozen=True)
@@ -50,6 +70,7 @@ class LMStudioEnrichmentProvider:
         model_name: str | None = None,
         api_key: str | None = None,
         timeout_seconds: float | None = None,
+        max_tokens: int | None = None,
     ) -> None:
         raw_base_url = base_url if base_url is not None else os.getenv("FLOMO_VLM_BASE_URL", "")
         self.base_url = raw_base_url.strip()
@@ -58,6 +79,7 @@ class LMStudioEnrichmentProvider:
         ).strip()
         self.api_key = api_key if api_key is not None else os.getenv("FLOMO_VLM_API_KEY")
         self.timeout_seconds, self._timeout_error = self._resolve_timeout(timeout_seconds)
+        self.max_tokens, self._max_tokens_error = self._resolve_max_tokens(max_tokens)
 
     def enrich(self, image_path: Path, *, image_id: str, memo_id: str) -> ProviderResult:
         return self.enrich_with_response(image_path, image_id=image_id, memo_id=memo_id).result
@@ -98,6 +120,17 @@ class LMStudioEnrichmentProvider:
         except ValueError:
             return 60.0, f"Invalid FLOMO_VLM_TIMEOUT_SECONDS: {raw_timeout}"
 
+    @staticmethod
+    def _resolve_max_tokens(max_tokens: int | None) -> tuple[int, str | None]:
+        if max_tokens is not None:
+            return max_tokens, None
+
+        raw_max_tokens = os.getenv("FLOMO_VLM_MAX_TOKENS", str(DEFAULT_MAX_TOKENS))
+        try:
+            return int(raw_max_tokens), None
+        except ValueError:
+            return DEFAULT_MAX_TOKENS, f"Invalid FLOMO_VLM_MAX_TOKENS: {raw_max_tokens}"
+
     def _validate_config(self) -> None:
         missing = []
         if not self.base_url:
@@ -111,8 +144,12 @@ class LMStudioEnrichmentProvider:
 
         if self._timeout_error is not None:
             raise LMStudioProviderError(self._timeout_error)
+        if self._max_tokens_error is not None:
+            raise LMStudioProviderError(self._max_tokens_error)
         if self.timeout_seconds <= 0:
             raise LMStudioProviderError("FLOMO_VLM_TIMEOUT_SECONDS must be greater than 0")
+        if self.max_tokens <= 0:
+            raise LMStudioProviderError("FLOMO_VLM_MAX_TOKENS must be greater than 0")
 
         parsed = urllib.parse.urlparse(self.base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -149,6 +186,8 @@ class LMStudioEnrichmentProvider:
                 }
             ],
             "temperature": 0,
+            "max_tokens": self.max_tokens,
+            "response_format": RESPONSE_FORMAT,
             "stream": False,
         }
 
@@ -208,9 +247,8 @@ class LMStudioEnrichmentProvider:
         if not isinstance(content, str) or not content.strip():
             raise LMStudioProviderError("Response choices[0].message.content is empty")
 
-        cleaned_content = _strip_json_code_fence(content)
         try:
-            parsed_content = json.loads(cleaned_content)
+            parsed_content = _parse_json_object(content)
         except json.JSONDecodeError as exc:
             raise LMStudioProviderError(f"Content JSON parse error: {exc}") from exc
 
@@ -240,3 +278,25 @@ def _strip_json_code_fence(content: str) -> str:
     if lines and lines[-1].strip() == "```":
         lines = lines[:-1]
     return "\n".join(lines).strip()
+
+
+def _parse_json_object(content: str) -> Any:
+    cleaned_content = _strip_json_code_fence(content)
+    try:
+        return json.loads(cleaned_content)
+    except json.JSONDecodeError as original_exc:
+        decoder = json.JSONDecoder()
+        for position, character in enumerate(cleaned_content):
+            if character != "{":
+                continue
+            try:
+                parsed, _ = decoder.raw_decode(cleaned_content[position:])
+            except json.JSONDecodeError:
+                continue
+            if (
+                isinstance(parsed, dict)
+                and "ocr_text" in parsed
+                and "visual_description" in parsed
+            ):
+                return parsed
+        raise original_exc
