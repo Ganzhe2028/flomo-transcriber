@@ -151,7 +151,7 @@ def _format_ordinal(value: int, *, width: int = 4) -> str:
 
 
 def _to_posix(path: Path | PurePosixPath) -> str:
-    return PurePosixPath(str(path)).as_posix()
+    return path.as_posix()
 
 
 class FlomoParser:
@@ -277,7 +277,15 @@ class FlomoParser:
                 if not candidate.is_dir() or candidate.name.startswith("."):
                     continue
                 if candidate.name.startswith("flomo@"):
-                    batch_dirs.append(candidate)
+                    if _discover_html_files(candidate):
+                        batch_dirs.append(candidate)
+                    else:
+                        nested_batches = [
+                            nested
+                            for nested in sorted(candidate.iterdir())
+                            if nested.is_dir() and nested.name.startswith("flomo@")
+                        ]
+                        batch_dirs.extend(nested_batches or [candidate])
                 else:
                     for nested in sorted(candidate.iterdir()):
                         if nested.is_dir() and nested.name.startswith("flomo@"):

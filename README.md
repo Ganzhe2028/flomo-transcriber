@@ -43,6 +43,8 @@ pip install -e .[dev]
 raw/
 ```
 
+支持常规结构 `raw/YYYY/flomo@User-YYYYMMDD/*.html`，也支持部分解压工具生成的同名包裹结构 `raw/YYYY/flomo@User-YYYYMMDD/flomo@User-YYYYMMDD/*.html`。
+
 这个仓库不会自带你的真实 Flomo 数据。`raw/`、`store/`、`monthly/`、`llm_chunks/`、`reports/` 默认都被 `.gitignore` 保护，避免误传到 GitHub。
 
 ### 3. 生成 raw 数据层

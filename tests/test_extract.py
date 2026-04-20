@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from conftest import SAMPLE_HTML
+
 from flomo_pipeline.extract import FlomoParser, StoreWriter
 
 
@@ -28,6 +30,37 @@ def test_parse_all_returns_stage1_records(sample_raw_root: Path, tmp_path: Path)
     missing_image = result.missing_images[0]
     assert missing_image.image_id == "flomo-exampleuser-20260304--0003--01"
     assert missing_image.reason == "source_file_missing"
+
+
+def test_parse_all_accepts_nested_flomo_export_wrapper(tmp_path: Path) -> None:
+    raw_root = tmp_path / "raw"
+    batch_dir = (
+        raw_root
+        / "2026"
+        / "flomo@ExampleUser-20260304"
+        / "flomo@ExampleUser-20260304"
+    )
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    (batch_dir / "ExampleUser的笔记.html").write_text(SAMPLE_HTML, encoding="utf-8")
+
+    image_dir = batch_dir / "file" / "2026-03-02" / "abc123"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    (image_dir / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    image_dir_2 = batch_dir / "file" / "2026-03-03" / "ghi789"
+    image_dir_2.mkdir(parents=True, exist_ok=True)
+    (image_dir_2 / "audio_cover.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    store_root = tmp_path / "store"
+    result = FlomoParser(raw_root=raw_root, store_root=store_root).parse_all()
+
+    assert len(result.memos) == 3
+    assert len(result.images) == 2
+    assert len(result.missing_images) == 1
+    assert (
+        result.memos[0].source_relpath
+        == "2026/flomo@ExampleUser-20260304/flomo@ExampleUser-20260304/ExampleUser的笔记.html"
+    )
 
 
 def test_writer_writes_stage1_filenames_and_copies_images(sample_raw_root: Path, tmp_path: Path) -> None:

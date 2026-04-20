@@ -43,6 +43,8 @@ Place your Flomo HTML export under:
 raw/
 ```
 
+Both the regular layout `raw/YYYY/flomo@User-YYYYMMDD/*.html` and the duplicate wrapper layout `raw/YYYY/flomo@User-YYYYMMDD/flomo@User-YYYYMMDD/*.html` are supported.
+
 This repository does not include real Flomo data. `raw/`, `store/`, `monthly/`, `llm_chunks/`, and `reports/` are ignored by Git by default so private data is not accidentally committed.
 
 ### 3. Build the Raw Data Layer
