@@ -5,7 +5,7 @@
 Turn your Flomo memory archive into files that LLMs can actually read.
 
 > [!NOTE]
-> Tested my own flomo export package: reduced to approximately 0.059% of the original size, i.e., a reduction of about 99.94%."
+> Tested my own flomo export package: reduced to approximately **0.059%** of the original size, i.e., a reduction of about **99.94%**.
 
 Many people use Flomo as a long-term memory system. After years of notes, the export can contain thousands of memos and many images, but it is not easy to hand that export to an LLM: text is scattered, images are unread, months are not split cleanly, and source tracking is fragile. `flomo-transcriber` turns that local export into clean, inspectable, reproducible files.
 
