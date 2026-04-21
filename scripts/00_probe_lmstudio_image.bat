@@ -29,7 +29,7 @@ if "%FLOMO_VLM_MODEL%"=="" (
 )
 
 if "%FLOMO_VLM_TIMEOUT_SECONDS%"=="" set "FLOMO_VLM_TIMEOUT_SECONDS=180"
-if "%FLOMO_VLM_MAX_TOKENS%"=="" set "FLOMO_VLM_MAX_TOKENS=1024"
+if "%FLOMO_VLM_MAX_TOKENS%"=="" set "FLOMO_VLM_MAX_TOKENS=4096"
 
 "%PYTHON%" scripts\probe_lmstudio_vlm.py --image "%IMAGE_PATH%"
 exit /b %ERRORLEVEL%

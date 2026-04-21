@@ -24,6 +24,6 @@ if [[ -z "${FLOMO_VLM_MODEL:-}" ]]; then
 fi
 
 export FLOMO_VLM_TIMEOUT_SECONDS="${FLOMO_VLM_TIMEOUT_SECONDS:-180}"
-export FLOMO_VLM_MAX_TOKENS="${FLOMO_VLM_MAX_TOKENS:-1024}"
+export FLOMO_VLM_MAX_TOKENS="${FLOMO_VLM_MAX_TOKENS:-4096}"
 
 "$PYTHON_BIN" scripts/probe_lmstudio_vlm.py --image "$IMAGE_PATH"

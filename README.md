@@ -81,7 +81,7 @@ python scripts/validate_enriched_images.py --store-root store
 $env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
 $env:FLOMO_VLM_MODEL="<你的视觉模型名>"
 $env:FLOMO_VLM_TIMEOUT_SECONDS="180"
-$env:FLOMO_VLM_MAX_TOKENS="1024"
+$env:FLOMO_VLM_MAX_TOKENS="4096"
 ```
 
 e.g.
@@ -90,7 +90,7 @@ e.g.
 $env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
 $env:FLOMO_VLM_MODEL="google/gemma-4-e4b"
 $env:FLOMO_VLM_TIMEOUT_SECONDS="720"
-$env:FLOMO_VLM_MAX_TOKENS="1024"
+$env:FLOMO_VLM_MAX_TOKENS="4096"
 d:\New\flomo-transcriber\scripts\30_stage2_4_prepare_context.bat
 ```
 
@@ -159,7 +159,7 @@ python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunk
 $env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
 $env:FLOMO_VLM_MODEL="<你的视觉模型名>"
 $env:FLOMO_VLM_TIMEOUT_SECONDS="180"
-$env:FLOMO_VLM_MAX_TOKENS="1024"
+$env:FLOMO_VLM_MAX_TOKENS="4096"
 
 scripts/00_probe_lmstudio_image.sh store/images/2025/2025-12/example.png
 scripts/10_stage2_enrich_lmstudio.sh 2025-12
@@ -186,7 +186,7 @@ scripts/20_stage3_4_build_context.sh
 $env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
 $env:FLOMO_VLM_MODEL="<你的视觉模型名>"
 $env:FLOMO_VLM_TIMEOUT_SECONDS="180"
-$env:FLOMO_VLM_MAX_TOKENS="1024"
+$env:FLOMO_VLM_MAX_TOKENS="4096"
 ```
 
 在 CMD 里使用：
@@ -195,7 +195,7 @@ $env:FLOMO_VLM_MAX_TOKENS="1024"
 set FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
 set FLOMO_VLM_MODEL=<你的视觉模型名>
 set FLOMO_VLM_TIMEOUT_SECONDS=180
-set FLOMO_VLM_MAX_TOKENS=1024
+set FLOMO_VLM_MAX_TOKENS=4096
 ```
 
 单图探测：
@@ -273,7 +273,7 @@ Stage 1-4 是推荐主流程。Stage 5 是可选功能；如果你要用 OpenRou
 - `.m4a`
 - 其他非静态图片类型
 
-图片描述会覆盖照片、物体、场景、图表、界面布局、diagram 和 screenshot 等可见非文字内容。
+图片描述会覆盖照片、物体、场景、图表、界面布局、diagram 和 screenshot 等可见非文字内容。密集截图或拍照笔记会保留关键文字，不会追求完整逐字 OCR。
 
 支持的 provider：
 
@@ -286,7 +286,7 @@ Stage 1-4 是推荐主流程。Stage 5 是可选功能；如果你要用 OpenRou
 - `FLOMO_VLM_MODEL`：本地视觉模型名
 - `FLOMO_VLM_API_KEY`：可选
 - `FLOMO_VLM_TIMEOUT_SECONDS`：可选，默认 `60`
-- `FLOMO_VLM_MAX_TOKENS`：可选，默认 `1024`，限制单张图片的模型输出长度
+- `FLOMO_VLM_MAX_TOKENS`：可选，默认 `4096`，限制单张图片的模型输出长度。密集截图或拍照笔记如果出现 JSON 截断错误，可以继续调大。
 
 图片增强失败不会中断整个流程。脚本会先完整跑一遍，再只重试失败项，最多重试 3 轮。仍失败的图片会保留 `status=failed` 和失败原因。
 

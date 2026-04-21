@@ -25,7 +25,7 @@ if "%FLOMO_VLM_MODEL%"=="" (
 )
 
 if "%FLOMO_VLM_TIMEOUT_SECONDS%"=="" set "FLOMO_VLM_TIMEOUT_SECONDS=180"
-if "%FLOMO_VLM_MAX_TOKENS%"=="" set "FLOMO_VLM_MAX_TOKENS=1024"
+if "%FLOMO_VLM_MAX_TOKENS%"=="" set "FLOMO_VLM_MAX_TOKENS=4096"
 
 echo Stage 2: image enrich via LM Studio
 if "%MONTH_ARG%"=="" (

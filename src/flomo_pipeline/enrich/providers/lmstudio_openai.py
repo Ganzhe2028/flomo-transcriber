@@ -24,9 +24,12 @@ Required JSON shape:
 
 Rules:
 - ocr_text: visible readable text only. Use an empty string if there is no readable text.
-- visual_description: visible non-text content, including photos, objects, scenes, charts, UI layout, diagrams, and screenshots. Use an empty string only if there is no meaningful non-text content.
+- visual_description: visible non-text content, including photos, objects, scenes, charts, UI layout, diagrams, and screenshots.
+- At least one field must be non-empty. If the image has no readable text and no meaningful non-text content, set visual_description to "No meaningful visible content."
 - Do not summarize meaning, infer emotions, add context, or combine the two fields.
-- For dense screenshots, keep the most important visible text in reading order and do not repeat duplicated blocks.
+- For dense screenshots or photographed notes, keep only the most important visible text in reading order.
+- Keep ocr_text under 1200 characters and visual_description under 400 characters.
+- Do not repeat duplicated blocks.
 - Do not return Markdown, prose, or code fences.
 """
 
@@ -47,7 +50,7 @@ RESPONSE_FORMAT = {
     },
 }
 
-DEFAULT_MAX_TOKENS = 1024
+DEFAULT_MAX_TOKENS = 4096
 
 
 @dataclass(frozen=True)
@@ -62,7 +65,7 @@ class LMStudioProviderError(Exception):
 
 class LMStudioEnrichmentProvider:
     name = "lmstudio"
-    prompt_version = "lmstudio-openai-v1"
+    prompt_version = "lmstudio-openai-v2"
 
     def __init__(
         self,
@@ -253,7 +256,7 @@ class LMStudioEnrichmentProvider:
         try:
             parsed_content = _parse_json_object(content)
         except json.JSONDecodeError as exc:
-            raise LMStudioProviderError(f"Content JSON parse error: {exc}") from exc
+            raise LMStudioProviderError(_format_content_json_error(content, exc)) from exc
 
         if not isinstance(parsed_content, dict):
             raise LMStudioProviderError("Content JSON must be an object")
@@ -263,7 +266,8 @@ class LMStudioEnrichmentProvider:
 
         if not (ocr_text or visual_description):
             raise LMStudioProviderError(
-                "Content JSON must include non-empty ocr_text or visual_description"
+                "Model returned empty ocr_text and visual_description. "
+                "If the image is not blank, retry with a stronger vision model."
             )
 
         return ProviderResult(
@@ -329,3 +333,22 @@ def _is_connection_refused(reason: Any) -> bool:
 
 def _is_timeout_reason(reason: Any) -> bool:
     return isinstance(reason, (TimeoutError, socket.timeout)) or str(reason) == "timed out"
+
+
+def _format_content_json_error(content: str, exc: json.JSONDecodeError) -> str:
+    message = f"Content JSON parse error: {exc}"
+    if _looks_truncated(content, exc):
+        return (
+            f"{message}. The model response may have been truncated; "
+            "increase FLOMO_VLM_MAX_TOKENS, for example to 4096."
+        )
+    return message
+
+
+def _looks_truncated(content: str, exc: json.JSONDecodeError) -> bool:
+    stripped_content = _strip_json_code_fence(content)
+    if not stripped_content:
+        return False
+    return "Unterminated string" in exc.msg or (
+        stripped_content.startswith("{") and not stripped_content.endswith("}")
+    )

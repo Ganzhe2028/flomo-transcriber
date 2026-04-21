@@ -45,7 +45,7 @@ def test_lmstudio_provider_success_parses_fields_and_sends_image(tmp_path: Path)
     request_payload = server.requests[0]
     assert request_payload["model"] == "local-vlm"
     assert request_payload["temperature"] == 0
-    assert request_payload["max_tokens"] == 1024
+    assert request_payload["max_tokens"] == 4096
     assert request_payload["response_format"]["type"] == "json_schema"
     assert request_payload["stream"] is False
     message_content = request_payload["messages"][0]["content"]
@@ -187,6 +187,28 @@ def test_lmstudio_provider_rejects_non_json_content(tmp_path: Path) -> None:
     assert call.raw_response is not None
 
 
+def test_lmstudio_provider_json_parse_error_hints_when_response_is_truncated(
+    tmp_path: Path,
+) -> None:
+    image_path = _write_probe_image(tmp_path)
+
+    with run_fake_lmstudio_server(
+        [FakeHTTPResponse(status=200, body=lmstudio_chat_response('{"ocr_text":"long text'))]
+    ) as server:
+        provider = LMStudioEnrichmentProvider(
+            base_url=server.url,
+            model_name="local-vlm",
+            timeout_seconds=2,
+        )
+
+        result = provider.enrich(image_path, image_id="image-1", memo_id="memo-1")
+
+    assert result.status == "failed"
+    assert result.error_message is not None
+    assert "Content JSON parse error" in result.error_message
+    assert "FLOMO_VLM_MAX_TOKENS" in result.error_message
+
+
 def test_lmstudio_provider_rejects_empty_fields(tmp_path: Path) -> None:
     image_path = _write_probe_image(tmp_path)
 
@@ -208,7 +230,7 @@ def test_lmstudio_provider_rejects_empty_fields(tmp_path: Path) -> None:
 
     assert result.status == "failed"
     assert result.error_message is not None
-    assert "non-empty ocr_text or visual_description" in result.error_message
+    assert "empty ocr_text and visual_description" in result.error_message
 
 
 def test_lmstudio_runner_happy_path_and_default_rerun_skip(tmp_path: Path) -> None:
@@ -247,7 +269,7 @@ def test_lmstudio_runner_happy_path_and_default_rerun_skip(tmp_path: Path) -> No
     success = by_id["flomo-example-20260304--0001--01"]
     assert success.status == "success"
     assert success.model_name == "local-vlm"
-    assert success.prompt_version == "lmstudio-openai-v1"
+    assert success.prompt_version == "lmstudio-openai-v2"
     assert success.ocr_text == "visible words"
     assert success.visual_description == "A saved image."
     assert stats.success == 1

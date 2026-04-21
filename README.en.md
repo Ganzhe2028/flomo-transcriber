@@ -81,7 +81,7 @@ If you want to read real image content with LM Studio, start LM Studio's OpenAI-
 export FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
 export FLOMO_VLM_MODEL="<your-vision-model-name>"
 export FLOMO_VLM_TIMEOUT_SECONDS="180"
-export FLOMO_VLM_MAX_TOKENS="1024"
+export FLOMO_VLM_MAX_TOKENS="4096"
 ```
 
 Probe one image first:
@@ -149,7 +149,7 @@ Stage 2 uses the vision model:
 export FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
 export FLOMO_VLM_MODEL="<your-vision-model-name>"
 export FLOMO_VLM_TIMEOUT_SECONDS="180"
-export FLOMO_VLM_MAX_TOKENS="1024"
+export FLOMO_VLM_MAX_TOKENS="4096"
 
 scripts/00_probe_lmstudio_image.sh store/images/2025/2025-12/example.png
 scripts/10_stage2_enrich_lmstudio.sh 2025-12
@@ -176,7 +176,7 @@ Set the LM Studio environment variables in PowerShell:
 $env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
 $env:FLOMO_VLM_MODEL="<your-vision-model-name>"
 $env:FLOMO_VLM_TIMEOUT_SECONDS="180"
-$env:FLOMO_VLM_MAX_TOKENS="1024"
+$env:FLOMO_VLM_MAX_TOKENS="4096"
 ```
 
 In CMD, use:
@@ -185,7 +185,7 @@ In CMD, use:
 set FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
 set FLOMO_VLM_MODEL=<your-vision-model-name>
 set FLOMO_VLM_TIMEOUT_SECONDS=180
-set FLOMO_VLM_MAX_TOKENS=1024
+set FLOMO_VLM_MAX_TOKENS=4096
 ```
 
 Probe one image:
@@ -263,7 +263,7 @@ Explicitly skipped:
 - `.m4a`
 - other non-static image types
 
-Visual descriptions cover visible non-text content such as photos, objects, scenes, charts, UI layout, diagrams, and screenshots.
+Visual descriptions cover visible non-text content such as photos, objects, scenes, charts, UI layout, diagrams, and screenshots. Dense screenshots or photographed notes keep the most important text instead of attempting full verbatim OCR.
 
 Providers:
 
@@ -276,7 +276,7 @@ Providers:
 - `FLOMO_VLM_MODEL`: local vision model name
 - `FLOMO_VLM_API_KEY`: optional
 - `FLOMO_VLM_TIMEOUT_SECONDS`: optional, default `60`
-- `FLOMO_VLM_MAX_TOKENS`: optional, default `1024`, limits model output length for each image
+- `FLOMO_VLM_MAX_TOKENS`: optional, default `4096`, limits model output length for each image. If dense screenshots or photographed notes return a truncated JSON error, raise it further.
 
 Image enrichment failures do not stop the whole run. The command finishes the first pass, then retries failed records only, up to 3 retry rounds. Records that still fail keep `status=failed` and the final error message.
 
