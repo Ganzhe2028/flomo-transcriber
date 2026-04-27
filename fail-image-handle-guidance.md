@@ -45,6 +45,8 @@
 
 ## 修改后重新生成下游文件
 
+e.g.
+
 ```bash
 python scripts/validate_enriched_images.py --store-root store
 python scripts/merge_monthly.py --store-root store --monthly-root monthly --month 2025-04
