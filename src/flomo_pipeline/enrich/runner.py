@@ -4,10 +4,12 @@ import json
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from flomo_pipeline.enrich.models import EnrichStats, EnrichedImageRecord
-from flomo_pipeline.enrich.provider import EnrichmentProvider
+from flomo_pipeline.enrich.models import EnrichedImageRecord, EnrichStats
+
+if TYPE_CHECKING:
+    from flomo_pipeline.enrich.provider import EnrichmentProvider
 
 SUPPORTED_IMAGE_EXTENSIONS = {
     ".png": "image/png",
@@ -35,9 +37,11 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def _write_jsonl(path: Path, records: list[EnrichedImageRecord]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record.to_dict(), ensure_ascii=False) + "\n")
+    tmp_path.replace(path)
 
 
 def _record_from_dict(payload: dict[str, Any]) -> EnrichedImageRecord:
@@ -84,6 +88,7 @@ class ImageEnrichmentRunner:
         project_root: Path | None = None,
         max_failed_retries: int = MAX_FAILED_RETRIES,
         workers: int = 1,
+        failed_only: bool = False,
     ) -> None:
         if workers <= 0:
             raise ValueError("workers must be positive")
@@ -95,6 +100,7 @@ class ImageEnrichmentRunner:
         self.project_root = project_root or store_root.parent
         self.max_failed_retries = max_failed_retries
         self.workers = workers
+        self.failed_only = failed_only
         self.memo_path = store_root / "memo.raw.jsonl"
         self.image_path = store_root / "image.raw.jsonl"
         self.enriched_path = store_root / "image.enriched.jsonl"
@@ -113,12 +119,13 @@ class ImageEnrichmentRunner:
         stats = EnrichStats()
         processed_records: list[EnrichedImageRecord] = []
 
-        target_images = [
-            record
-            for record in image_records
-            if self.month is None
-            or self._get_month(memos_by_id.get(str(record["memo_id"]))) == self.month
-        ]
+        target_images = self._select_target_images(
+            image_records=image_records,
+            existing_records=existing_records,
+            memos_by_id=memos_by_id,
+        )
+        target_image_ids = {str(record["image_id"]) for record in target_images}
+        preserve_non_target_existing = self.month is not None or self.failed_only
         stats.total = len(target_images)
 
         processed_records = self._process_initial_records(
@@ -126,23 +133,91 @@ class ImageEnrichmentRunner:
             existing_records=existing_records,
             memos_by_id=memos_by_id,
             stats=stats,
+            target_image_ids=target_image_ids,
+            preserve_non_target_existing=preserve_non_target_existing,
         )
 
-        self._retry_failed_records(processed_records, target_images, memos_by_id, stats)
+        self._retry_failed_records(
+            processed_records,
+            target_images,
+            memos_by_id,
+            stats,
+            existing_records=existing_records,
+            target_image_ids=target_image_ids,
+            preserve_non_target_existing=preserve_non_target_existing,
+        )
 
-        if self.month is None:
-            final_records = processed_records
-        else:
-            untouched_existing = [
-                record
-                for image_id, record in existing_records.items()
-                if image_id not in {str(raw["image_id"]) for raw in target_images}
-            ]
-            final_records = untouched_existing + processed_records
-
-        final_records.sort(key=lambda record: record.image_id)
+        final_records = self._build_output_records(
+            processed_records=processed_records,
+            existing_records=existing_records,
+            target_image_ids=target_image_ids,
+            preserve_non_target_existing=preserve_non_target_existing,
+        )
         _write_jsonl(self.enriched_path, final_records)
         return final_records, stats
+
+    def _select_target_images(
+        self,
+        *,
+        image_records: list[dict[str, Any]],
+        existing_records: dict[str, EnrichedImageRecord],
+        memos_by_id: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        target_images = [
+            record
+            for record in image_records
+            if self.month is None
+            or self._get_month(memos_by_id.get(str(record["memo_id"]))) == self.month
+        ]
+        if not self.failed_only:
+            return target_images
+
+        failed_image_ids = {
+            image_id
+            for image_id, record in existing_records.items()
+            if record.status == "failed"
+        }
+        return [record for record in target_images if str(record["image_id"]) in failed_image_ids]
+
+    def _build_output_records(
+        self,
+        *,
+        processed_records: list[EnrichedImageRecord],
+        existing_records: dict[str, EnrichedImageRecord],
+        target_image_ids: set[str],
+        preserve_non_target_existing: bool,
+    ) -> list[EnrichedImageRecord]:
+        by_id: dict[str, EnrichedImageRecord] = {}
+        if preserve_non_target_existing:
+            by_id.update(existing_records)
+        else:
+            for image_id in target_image_ids:
+                existing = existing_records.get(image_id)
+                if existing is not None:
+                    by_id[image_id] = existing
+
+        for record in processed_records:
+            by_id[record.image_id] = record
+
+        return sorted(by_id.values(), key=lambda record: record.image_id)
+
+    def _persist_progress(
+        self,
+        *,
+        processed_records: list[EnrichedImageRecord],
+        existing_records: dict[str, EnrichedImageRecord],
+        target_image_ids: set[str],
+        preserve_non_target_existing: bool,
+    ) -> None:
+        _write_jsonl(
+            self.enriched_path,
+            self._build_output_records(
+                processed_records=processed_records,
+                existing_records=existing_records,
+                target_image_ids=target_image_ids,
+                preserve_non_target_existing=preserve_non_target_existing,
+            ),
+        )
 
     def _process_initial_records(
         self,
@@ -151,6 +226,8 @@ class ImageEnrichmentRunner:
         existing_records: dict[str, EnrichedImageRecord],
         memos_by_id: dict[str, dict[str, Any]],
         stats: EnrichStats,
+        target_image_ids: set[str],
+        preserve_non_target_existing: bool,
     ) -> list[EnrichedImageRecord]:
         if self.workers == 1:
             return self._process_initial_records_sequential(
@@ -158,12 +235,16 @@ class ImageEnrichmentRunner:
                 existing_records=existing_records,
                 memos_by_id=memos_by_id,
                 stats=stats,
+                target_image_ids=target_image_ids,
+                preserve_non_target_existing=preserve_non_target_existing,
             )
         return self._process_initial_records_parallel(
             target_images=target_images,
             existing_records=existing_records,
             memos_by_id=memos_by_id,
             stats=stats,
+            target_image_ids=target_image_ids,
+            preserve_non_target_existing=preserve_non_target_existing,
         )
 
     def _process_initial_records_sequential(
@@ -173,6 +254,8 @@ class ImageEnrichmentRunner:
         existing_records: dict[str, EnrichedImageRecord],
         memos_by_id: dict[str, dict[str, Any]],
         stats: EnrichStats,
+        target_image_ids: set[str],
+        preserve_non_target_existing: bool,
     ) -> list[EnrichedImageRecord]:
         processed_records: list[EnrichedImageRecord] = []
         for index, image_record in enumerate(target_images, start=1):
@@ -181,6 +264,12 @@ class ImageEnrichmentRunner:
             if existing is not None and existing.status == "success" and not self.overwrite:
                 processed_records.append(existing)
                 stats.skipped += 1
+                self._persist_progress(
+                    processed_records=processed_records,
+                    existing_records=existing_records,
+                    target_image_ids=target_image_ids,
+                    preserve_non_target_existing=preserve_non_target_existing,
+                )
                 print(f"[{index}/{stats.total}] {image_id} skipped (existing success)", flush=True)
                 continue
 
@@ -188,6 +277,12 @@ class ImageEnrichmentRunner:
             enriched_record = self._enrich_one(image_record, memo_record)
             processed_records.append(enriched_record)
             self._update_stats(stats, enriched_record)
+            self._persist_progress(
+                processed_records=processed_records,
+                existing_records=existing_records,
+                target_image_ids=target_image_ids,
+                preserve_non_target_existing=preserve_non_target_existing,
+            )
 
             print(f"[{index}/{stats.total}] {image_id} {enriched_record.status}", flush=True)
         return processed_records
@@ -199,6 +294,8 @@ class ImageEnrichmentRunner:
         existing_records: dict[str, EnrichedImageRecord],
         memos_by_id: dict[str, dict[str, Any]],
         stats: EnrichStats,
+        target_image_ids: set[str],
+        preserve_non_target_existing: bool,
     ) -> list[EnrichedImageRecord]:
         processed_records: list[EnrichedImageRecord | None] = [None] * len(target_images)
         futures: dict[Future[EnrichedImageRecord], tuple[int, str]] = {}
@@ -210,6 +307,14 @@ class ImageEnrichmentRunner:
                 if existing is not None and existing.status == "success" and not self.overwrite:
                     processed_records[index - 1] = existing
                     stats.skipped += 1
+                    self._persist_progress(
+                        processed_records=[
+                            record for record in processed_records if record is not None
+                        ],
+                        existing_records=existing_records,
+                        target_image_ids=target_image_ids,
+                        preserve_non_target_existing=preserve_non_target_existing,
+                    )
                     print(
                         f"[{index}/{stats.total}] {image_id} skipped (existing success)",
                         flush=True,
@@ -225,6 +330,14 @@ class ImageEnrichmentRunner:
                 enriched_record = future.result()
                 processed_records[index - 1] = enriched_record
                 self._update_stats(stats, enriched_record)
+                self._persist_progress(
+                    processed_records=[
+                        record for record in processed_records if record is not None
+                    ],
+                    existing_records=existing_records,
+                    target_image_ids=target_image_ids,
+                    preserve_non_target_existing=preserve_non_target_existing,
+                )
                 print(f"[{index}/{stats.total}] {image_id} {enriched_record.status}", flush=True)
 
         return [record for record in processed_records if record is not None]
@@ -244,6 +357,10 @@ class ImageEnrichmentRunner:
         target_images: list[dict[str, Any]],
         memos_by_id: dict[str, dict[str, Any]],
         stats: EnrichStats,
+        *,
+        existing_records: dict[str, EnrichedImageRecord],
+        target_image_ids: set[str],
+        preserve_non_target_existing: bool,
     ) -> None:
         if self.max_failed_retries <= 0:
             stats.retry_failed = self._count_failed(processed_records, target_images)
@@ -274,6 +391,12 @@ class ImageEnrichmentRunner:
                 retried_record = self._enrich_one(image_record, memo_record)
                 processed_records[position] = retried_record
                 stats.retry_attempts += 1
+                self._persist_progress(
+                    processed_records=processed_records,
+                    existing_records=existing_records,
+                    target_image_ids=target_image_ids,
+                    preserve_non_target_existing=preserve_non_target_existing,
+                )
 
                 if retried_record.status == "success":
                     stats.failed -= 1

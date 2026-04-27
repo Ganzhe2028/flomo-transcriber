@@ -10,15 +10,41 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from flomo_pipeline.enrich import ImageEnrichmentRunner
 from flomo_pipeline.enrich.providers import build_provider
+from flomo_pipeline.enrich.runner import MAX_FAILED_RETRIES
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build image.enriched.jsonl from image.raw.jsonl")
-    parser.add_argument("--store-root", type=Path, default=Path("store"), help="Path to the store root")
+    parser.add_argument(
+        "--store-root",
+        type=Path,
+        default=Path("store"),
+        help="Path to the store root",
+    )
     parser.add_argument("--provider", default="mock", help="Enrichment provider name")
     parser.add_argument("--month", default=None, help="Process only one month, e.g. 2026-01")
-    parser.add_argument("--overwrite", action="store_true", help="Reprocess existing successful image_id records")
-    parser.add_argument("--workers", type=int, default=1, help="Number of images to process concurrently")
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Reprocess existing successful image_id records",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of images to process concurrently",
+    )
+    parser.add_argument(
+        "--failed-only",
+        action="store_true",
+        help="Process only existing failed image records",
+    )
+    parser.add_argument(
+        "--max-failed-retries",
+        type=int,
+        default=MAX_FAILED_RETRIES,
+        help="Retry failed records inside this run",
+    )
     args = parser.parse_args()
 
     store_root = args.store_root.resolve()
@@ -35,6 +61,8 @@ def main() -> None:
         month=args.month,
         overwrite=args.overwrite,
         workers=args.workers,
+        max_failed_retries=args.max_failed_retries,
+        failed_only=args.failed_only,
     ).run()
 
     print(stats.format_summary())

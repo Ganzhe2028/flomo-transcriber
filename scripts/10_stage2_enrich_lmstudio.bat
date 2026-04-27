@@ -34,6 +34,7 @@ if "%MONTH_ARG%"=="" (
   echo month=%MONTH_ARG%
 )
 echo store_root=%STORE_ROOT%
+echo vlm_model=%FLOMO_VLM_MODEL%
 
 if "%OVERWRITE_ENRICH%"=="1" (
   if "%MONTH_ARG%"=="" (

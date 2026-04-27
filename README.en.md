@@ -115,6 +115,8 @@ If your local model server allows concurrent predictions, add `--workers` to pro
 python scripts/enrich_images.py --store-root store --provider lmstudio --workers 4
 ```
 
+Stage 2 writes `store/image.enriched.jsonl` after each completed image. If you pause or close the run, the next run skips existing successful records and continues with failed or unfinished records.
+
 ### 5. Build LLM-Ready Chunks
 
 ```bash
@@ -188,6 +190,8 @@ set FLOMO_VLM_TIMEOUT_SECONDS=180
 set FLOMO_VLM_MAX_TOKENS=4096
 ```
 
+Windows scripts do not choose a model automatically. They only read `FLOMO_VLM_MODEL` from the current environment. If it is missing, the script stops; startup output includes `vlm_model=...` so you can confirm the exact model.
+
 Probe one image:
 
 ```bat
@@ -213,6 +217,14 @@ scripts\30_stage2_4_prepare_context.bat 2025-12
 ```
 
 This script regenerates and validates `store/*.raw.jsonl` first, so you can rerun it directly after updating `raw/`. If you omit `2025-12`, all months are processed.
+
+Retry failed images only:
+
+```bat
+scripts\40_retry_failed_images_lmstudio.bat 2025-12
+```
+
+This script runs up to 3 rounds by default and only processes images with `status=failed`. Existing successful records are not rerun. If you omit `2025-12`, all months are processed.
 
 ## Folders and Outputs
 
@@ -278,7 +290,7 @@ Providers:
 - `FLOMO_VLM_TIMEOUT_SECONDS`: optional, default `60`
 - `FLOMO_VLM_MAX_TOKENS`: optional, default `4096`, limits model output length for each image. If dense screenshots or photographed notes return a truncated JSON error, raise it further.
 
-Image enrichment failures do not stop the whole run. The command finishes the first pass, then retries failed records only, up to 3 retry rounds. Records that still fail keep `status=failed` and the final error message.
+Image enrichment failures do not stop the whole run. The command finishes the first pass, then retries failed records only, up to 3 retry rounds. Each completed image is saved immediately. Records that still fail keep `status=failed` and the final error message.
 
 Existing successful records are skipped by default. To rerun successful records:
 

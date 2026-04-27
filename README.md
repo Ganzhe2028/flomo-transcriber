@@ -125,6 +125,8 @@ python scripts/enrich_images.py --store-root store --provider lmstudio
 python scripts/enrich_images.py --store-root store --provider lmstudio --workers 4
 ```
 
+Stage 2 每完成一张图片都会立即写入 `store/image.enriched.jsonl`。如果中途暂停或关闭，再次运行会跳过已成功记录，继续处理失败或未完成记录。
+
 ### 5. 生成给外部 LLM 读取的 chunks
 
 ```bash
@@ -198,6 +200,8 @@ set FLOMO_VLM_TIMEOUT_SECONDS=180
 set FLOMO_VLM_MAX_TOKENS=4096
 ```
 
+Windows 脚本不会自动选择模型，只读取当前环境里的 `FLOMO_VLM_MODEL`。如果没有设置会直接停止；启动时会打印 `vlm_model=...` 方便确认。
+
 单图探测：
 
 ```bat
@@ -223,6 +227,14 @@ scripts\30_stage2_4_prepare_context.bat 2025-12
 ```
 
 这个脚本会先重新生成并校验 `store/*.raw.jsonl`，所以更新 `raw/` 后可以直接重跑它。不传 `2025-12` 就会处理全部月份。
+
+只重试失败图片：
+
+```bat
+scripts\40_retry_failed_images_lmstudio.bat 2025-12
+```
+
+这个脚本默认循环 3 轮，只处理 `status=failed` 的图片。已成功的图片不会重跑；不传 `2025-12` 就会处理全部月份。
 
 ## 目录和输出
 
@@ -288,7 +300,7 @@ Stage 1-4 是推荐主流程。Stage 5 是可选功能；如果你要用 OpenRou
 - `FLOMO_VLM_TIMEOUT_SECONDS`：可选，默认 `60`
 - `FLOMO_VLM_MAX_TOKENS`：可选，默认 `4096`，限制单张图片的模型输出长度。密集截图或拍照笔记如果出现 JSON 截断错误，可以继续调大。
 
-图片增强失败不会中断整个流程。脚本会先完整跑一遍，再只重试失败项，最多重试 3 轮。仍失败的图片会保留 `status=failed` 和失败原因。
+图片增强失败不会中断整个流程。脚本会先完整跑一遍，再只重试失败项，最多重试 3 轮。每张图片完成后都会立刻保存；仍失败的图片会保留 `status=failed` 和失败原因。
 
 默认不会覆盖已经成功的图片记录。需要重跑成功项时加：
 

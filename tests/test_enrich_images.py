@@ -103,6 +103,52 @@ def _setup_single_image_store(tmp_path: Path) -> Path:
     return store_root
 
 
+def _setup_two_image_store(tmp_path: Path) -> Path:
+    store_root = tmp_path / "store"
+    store_root.mkdir(parents=True, exist_ok=True)
+
+    write_jsonl(
+        store_root / "memo.raw.jsonl",
+        [
+            {
+                "memo_id": "flomo-example-20260304--0001",
+                "created_at": "2026-03-04T10:00:00",
+                "body_md": "memo",
+                "image_count": 2,
+                "source_relpath": "2026/flomo@Example-20260304/Example.html",
+                "batch_label": "20260304",
+                "ordinal": 1,
+            }
+        ],
+    )
+    write_jsonl(
+        store_root / "image.raw.jsonl",
+        [
+            {
+                "image_id": "flomo-example-20260304--0001--01",
+                "memo_id": "flomo-example-20260304--0001",
+                "image_relpath": "store/images/2026/2026-03/good-image-1.png",
+                "source_relpath": "2026/flomo@Example-20260304/file/2026-03-04/a/good-image-1.png",
+                "ordinal": 1,
+            },
+            {
+                "image_id": "flomo-example-20260304--0001--02",
+                "memo_id": "flomo-example-20260304--0001",
+                "image_relpath": "store/images/2026/2026-03/good-image-2.png",
+                "source_relpath": "2026/flomo@Example-20260304/file/2026-03-04/a/good-image-2.png",
+                "ordinal": 2,
+            },
+        ],
+    )
+
+    for name in ("good-image-1.png", "good-image-2.png"):
+        image_path = tmp_path / "store" / "images" / "2026" / "2026-03" / name
+        image_path.parent.mkdir(parents=True, exist_ok=True)
+        image_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    return store_root
+
+
 class SequencedProvider:
     name = "sequenced"
     model_name = "sequenced-vlm"
@@ -122,6 +168,21 @@ class SequencedProvider:
             status="failed",
             error_message="unexpected extra call",
         )
+
+
+class InterruptingProvider:
+    name = "interrupting"
+    model_name = "interrupting-vlm"
+    prompt_version = "interrupting-v1"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def enrich(self, image_path: Path, *, image_id: str, memo_id: str) -> ProviderResult:
+        self.calls += 1
+        if self.calls == 1:
+            return ProviderResult("saved text", "", "success", None)
+        raise KeyboardInterrupt()
 
 
 def test_enrich_runner_handles_success_skipped_failed_and_stats(tmp_path: Path) -> None:
@@ -155,6 +216,36 @@ def test_enrich_runner_handles_success_skipped_failed_and_stats(tmp_path: Path) 
     assert stats.success == 1
     assert stats.skipped == 1
     assert stats.failed == 1
+
+
+def test_enrich_runner_persists_progress_before_interruption(tmp_path: Path) -> None:
+    store_root = _setup_two_image_store(tmp_path)
+    provider = InterruptingProvider()
+
+    try:
+        ImageEnrichmentRunner(
+            store_root=store_root,
+            provider=provider,
+            project_root=tmp_path,
+            run_id="run-1",
+            max_failed_retries=0,
+        ).run()
+    except KeyboardInterrupt:
+        pass
+    else:  # pragma: no cover - defensive guard
+        raise AssertionError("expected interruption")
+
+    records = [
+        json.loads(line)
+        for line in (store_root / "image.enriched.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+    assert provider.calls == 2
+    assert len(records) == 1
+    assert records[0]["image_id"] == "flomo-example-20260304--0001--01"
+    assert records[0]["status"] == "success"
+    assert records[0]["ocr_text"] == "saved text"
 
 
 def test_enrich_runner_parallel_workers_keep_records_and_stats(tmp_path: Path) -> None:
@@ -207,6 +298,67 @@ def test_enrich_runner_skips_existing_success_by_default(tmp_path: Path) -> None
     assert second_stats.success == 0
     assert second_stats.skipped == 2
     assert second_stats.failed == 1
+
+
+def test_enrich_runner_failed_only_retries_failed_and_preserves_success(tmp_path: Path) -> None:
+    store_root = _setup_two_image_store(tmp_path)
+    write_jsonl(
+        store_root / "image.enriched.jsonl",
+        [
+            {
+                "image_id": "flomo-example-20260304--0001--01",
+                "memo_id": "flomo-example-20260304--0001",
+                "created_at": "2026-03-04T10:00:00",
+                "month": "2026-03",
+                "relative_path": "store/images/2026/2026-03/good-image-1.png",
+                "source_relpath": "2026/flomo@Example-20260304/file/2026-03-04/a/good-image-1.png",
+                "media_type": "image/png",
+                "ocr_text": "existing text",
+                "visual_description": "",
+                "model_name": "old-vlm",
+                "prompt_version": "old-v1",
+                "run_id": "old-run",
+                "status": "success",
+                "error_message": None,
+            },
+            {
+                "image_id": "flomo-example-20260304--0001--02",
+                "memo_id": "flomo-example-20260304--0001",
+                "created_at": "2026-03-04T10:00:00",
+                "month": "2026-03",
+                "relative_path": "store/images/2026/2026-03/good-image-2.png",
+                "source_relpath": "2026/flomo@Example-20260304/file/2026-03-04/a/good-image-2.png",
+                "media_type": "image/png",
+                "ocr_text": "",
+                "visual_description": "",
+                "model_name": "old-vlm",
+                "prompt_version": "old-v1",
+                "run_id": "old-run",
+                "status": "failed",
+                "error_message": "temporary failure",
+            },
+        ],
+    )
+    provider = SequencedProvider([ProviderResult("retried text", "", "success", None)])
+
+    records, stats = ImageEnrichmentRunner(
+        store_root=store_root,
+        provider=provider,
+        project_root=tmp_path,
+        run_id="retry-run",
+        failed_only=True,
+        max_failed_retries=0,
+    ).run()
+
+    by_id = {record.image_id: record for record in records}
+    assert provider.calls == 1
+    assert by_id["flomo-example-20260304--0001--01"].run_id == "old-run"
+    assert by_id["flomo-example-20260304--0001--02"].run_id == "retry-run"
+    assert by_id["flomo-example-20260304--0001--02"].status == "success"
+    assert by_id["flomo-example-20260304--0001--02"].ocr_text == "retried text"
+    assert stats.total == 1
+    assert stats.success == 1
+    assert stats.failed == 0
 
 
 def test_enrich_runner_retries_failed_records_after_initial_pass(tmp_path: Path) -> None:
