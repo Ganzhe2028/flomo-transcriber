@@ -206,13 +206,13 @@ Run local Stage 3-4:
 scripts\20_stage3_4_build_context.bat 2025-12
 ```
 
-Run Stage 2-4 together:
+Run from `raw/` through Stage 4:
 
 ```bat
 scripts\30_stage2_4_prepare_context.bat 2025-12
 ```
 
-If you omit `2025-12`, all months are processed.
+This script regenerates and validates `store/*.raw.jsonl` first, so you can rerun it directly after updating `raw/`. If you omit `2025-12`, all months are processed.
 
 ## Folders and Outputs
 

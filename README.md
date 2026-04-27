@@ -216,13 +216,13 @@ scripts\10_stage2_enrich_lmstudio.bat 2025-12
 scripts\20_stage3_4_build_context.bat 2025-12
 ```
 
-从 Stage 2 到 Stage 4 一次跑完：
+从 `raw/` 到 Stage 4 一次跑完：
 
 ```bat
 scripts\30_stage2_4_prepare_context.bat 2025-12
 ```
 
-不传 `2025-12` 就会处理全部月份。
+这个脚本会先重新生成并校验 `store/*.raw.jsonl`，所以更新 `raw/` 后可以直接重跑它。不传 `2025-12` 就会处理全部月份。
 
 ## 目录和输出
 
