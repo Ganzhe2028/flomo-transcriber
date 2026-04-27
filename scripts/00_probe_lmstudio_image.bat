@@ -22,9 +22,9 @@ if "%FLOMO_VLM_BASE_URL%"=="" (
 )
 
 if "%FLOMO_VLM_MODEL%"=="" (
-  echo Missing FLOMO_VLM_MODEL, for example: google/gemma-4-e4b
-  echo PowerShell: $env:FLOMO_VLM_MODEL="google/gemma-4-e4b"
-  echo CMD: set FLOMO_VLM_MODEL=google/gemma-4-e4b
+  echo Missing FLOMO_VLM_MODEL, for example: google/gemma-4-e2b
+  echo PowerShell: $env:FLOMO_VLM_MODEL="google/gemma-4-e2b"
+  echo CMD: set FLOMO_VLM_MODEL=google/gemma-4-e2b
   exit /b 2
 )
 

@@ -88,7 +88,7 @@ e.g.
 
 ```bash
 $env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
-$env:FLOMO_VLM_MODEL="google/gemma-4-e4b"
+$env:FLOMO_VLM_MODEL="google/gemma-4-e2b"
 $env:FLOMO_VLM_TIMEOUT_SECONDS="720"
 $env:FLOMO_VLM_MAX_TOKENS="4096"
 d:\New\flomo-transcriber\scripts\30_stage2_4_prepare_context.bat

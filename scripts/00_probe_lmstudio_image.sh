@@ -19,7 +19,7 @@ if [[ -z "${FLOMO_VLM_BASE_URL:-}" ]]; then
 fi
 
 if [[ -z "${FLOMO_VLM_MODEL:-}" ]]; then
-  echo "Missing FLOMO_VLM_MODEL, for example: google/gemma-4-e4b"
+  echo "Missing FLOMO_VLM_MODEL, for example: google/gemma-4-e2b"
   exit 2
 fi
 
