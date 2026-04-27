@@ -8,7 +8,7 @@ if "%PYTHON%"=="" set "PYTHON=python"
 if "%RAW_ROOT%"=="" set "RAW_ROOT=raw"
 if "%STORE_ROOT%"=="" set "STORE_ROOT=store"
 if "%FLOMO_VLM_BASE_URL%"=="" set "FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1"
-if "%FLOMO_VLM_MODEL%"=="" set "FLOMO_VLM_MODEL=google/gemma-4-e4b"
+if "%FLOMO_VLM_MODEL%"=="" set "FLOMO_VLM_MODEL=google/gemma-4-e2b"
 
 set "MONTH_ARG=%~1"
 if "%MONTH_ARG%"=="" set "MONTH_ARG=%MONTH%"
