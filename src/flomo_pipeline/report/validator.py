@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
+from flomo_pipeline.common.validation import (
+    Severity,
+    ValidationReport,
+    Violation,
+    load_json_for_validation,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 CHUNK_FILE_SUFFIX = ".json"
 REPORT_JSON_SUFFIX = ".report.json"
@@ -37,11 +43,7 @@ REQUIRED_SECTION_FIELDS = {
 }
 
 
-class Severity(str, Enum):
-    ERROR = "error"
-
-
-class Rule(str, Enum):
+class Rule(StrEnum):
     R1_CHUNK_JSON_PARSEABLE = "R1"
     R2_REPORT_JSON_PARSEABLE = "R2"
     R3_REQUIRED_FIELD_MISSING = "R3"
@@ -54,72 +56,6 @@ class Rule(str, Enum):
     C7_FAILED_ERROR_PRESENT = "C7"
 
 
-@dataclass(frozen=True)
-class Violation:
-    rule: Rule
-    severity: Severity
-    message: str
-    table: str
-    record_id: str
-
-
-@dataclass
-class ValidationReport:
-    violations: list[Violation] = field(default_factory=list)
-
-    @property
-    def ok(self) -> bool:
-        return len(self.violations) == 0
-
-    def add(self, violation: Violation) -> None:
-        self.violations.append(violation)
-
-    def format_summary(self) -> str:
-        if self.ok:
-            return "Validation passed (0 error(s))"
-        return f"Validation failed: {len(self.violations)} error(s)"
-
-    def format_detail(self) -> str:
-        lines: list[str] = []
-        by_table: dict[str, list[Violation]] = {}
-        for violation in self.violations:
-            by_table.setdefault(violation.table, []).append(violation)
-
-        for table in sorted(by_table):
-            lines.append(f"\n-- {table} --")
-            for violation in by_table[table]:
-                record_suffix = f" [{violation.record_id}]" if violation.record_id else ""
-                lines.append(
-                    f"  {violation.severity.value.upper():7} "
-                    f"{violation.rule.value:3}{record_suffix}  {violation.message}"
-                )
-
-        lines.append("")
-        lines.append(self.format_summary())
-        return "\n".join(lines)
-
-
-def _load_json(
-    path: Path,
-    report: ValidationReport,
-    table: str,
-    rule: Rule,
-) -> dict[str, Any] | None:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        report.add(
-            Violation(
-                rule=rule,
-                severity=Severity.ERROR,
-                message=f"JSON parse error: {exc}",
-                table=table,
-                record_id=path.name,
-            )
-        )
-        return None
-
-
 class ReportValidator:
     def __init__(self, *, chunks_root: Path, reports_root: Path, month: str | None = None) -> None:
         self.chunks_root = chunks_root
@@ -127,17 +63,19 @@ class ReportValidator:
         self.month = month
 
     def validate(self) -> ValidationReport:
-        report = ValidationReport()
+        report = ValidationReport(show_line_numbers=False)
         for month in self._discover_months():
             chunk_paths = sorted((self.chunks_root / month).glob(f"*{CHUNK_FILE_SUFFIX}"))
-            chunk_ids = [
-                str(chunk["chunk_id"])
-                for chunk in (
-                    _load_json(path, report, f"llm_chunks/{month}", Rule.R1_CHUNK_JSON_PARSEABLE)
-                    for path in chunk_paths
+            chunk_ids: list[str] = []
+            for path in chunk_paths:
+                chunk = load_json_for_validation(
+                    path,
+                    report=report,
+                    table=f"llm_chunks/{month}",
+                    rule=Rule.R1_CHUNK_JSON_PARSEABLE,
                 )
-                if chunk is not None
-            ]
+                if chunk is not None:
+                    chunk_ids.append(str(chunk["chunk_id"]))
 
             report_path = self.reports_root / f"{month}{REPORT_JSON_SUFFIX}"
             md_path = self.reports_root / f"{month}{REPORT_MD_SUFFIX}"
@@ -153,7 +91,12 @@ class ReportValidator:
                 )
                 continue
 
-            record = _load_json(report_path, report, "reports", Rule.R2_REPORT_JSON_PARSEABLE)
+            record = load_json_for_validation(
+                report_path,
+                report=report,
+                table="reports",
+                rule=Rule.R2_REPORT_JSON_PARSEABLE,
+            )
             if record is None:
                 continue
 

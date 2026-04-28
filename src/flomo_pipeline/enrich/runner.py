@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from flomo_pipeline.common.io import read_jsonl, write_jsonl
 from flomo_pipeline.enrich.models import EnrichedImageRecord, EnrichStats, EnrichStatus
 
 if TYPE_CHECKING:
@@ -23,25 +23,6 @@ SKIPPED_MEDIA_EXTENSIONS = {
 }
 DEFAULT_MEDIA_TYPE = "application/octet-stream"
 MAX_FAILED_RETRIES = 3
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    records: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            records.append(json.loads(line))
-    return records
-
-
-def _write_jsonl(path: Path, records: list[EnrichedImageRecord]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f"{path.name}.tmp")
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-        for record in records:
-            handle.write(json.dumps(record.to_dict(), ensure_ascii=False) + "\n")
-    tmp_path.replace(path)
 
 
 def _record_from_dict(payload: dict[str, Any]) -> EnrichedImageRecord:
@@ -106,12 +87,12 @@ class ImageEnrichmentRunner:
         self.enriched_path = store_root / "image.enriched.jsonl"
 
     def run(self) -> tuple[list[EnrichedImageRecord], EnrichStats]:
-        memo_records = _load_jsonl(self.memo_path)
-        image_records = _load_jsonl(self.image_path)
+        memo_records = read_jsonl(self.memo_path)
+        image_records = read_jsonl(self.image_path)
         existing_records = {
             record.image_id: record
             for record in (
-                _record_from_dict(payload) for payload in _load_jsonl(self.enriched_path)
+                _record_from_dict(payload) for payload in read_jsonl(self.enriched_path)
             )
         }
         memos_by_id = {str(record["memo_id"]): record for record in memo_records}
@@ -153,7 +134,7 @@ class ImageEnrichmentRunner:
             target_image_ids=target_image_ids,
             preserve_non_target_existing=preserve_non_target_existing,
         )
-        _write_jsonl(self.enriched_path, final_records)
+        write_jsonl(self.enriched_path, final_records, atomic=True)
         return final_records, stats
 
     def _select_target_images(
@@ -209,7 +190,7 @@ class ImageEnrichmentRunner:
         target_image_ids: set[str],
         preserve_non_target_existing: bool,
     ) -> None:
-        _write_jsonl(
+        write_jsonl(
             self.enriched_path,
             self._build_output_records(
                 processed_records=processed_records,
@@ -217,6 +198,7 @@ class ImageEnrichmentRunner:
                 target_image_ids=target_image_ids,
                 preserve_non_target_existing=preserve_non_target_existing,
             ),
+            atomic=True,
         )
 
     def _process_initial_records(

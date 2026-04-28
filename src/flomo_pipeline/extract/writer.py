@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-import json
 import shutil
-from pathlib import Path
-from typing import Sequence
+from typing import TYPE_CHECKING
 
-from flomo_pipeline.common.models import ImageRecord, MemoRecord, MissingImageRecord, ParseResult
+from flomo_pipeline.common.io import write_jsonl
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from flomo_pipeline.common.models import ImageRecord, ParseResult
 
 
 class StoreWriter:
@@ -20,19 +23,10 @@ class StoreWriter:
         self.store_root.mkdir(parents=True, exist_ok=True)
         self.images_dir.mkdir(parents=True, exist_ok=True)
 
-        self._write_jsonl(self.memo_path, result.memos)
-        self._write_jsonl(self.image_path, result.images)
-        self._write_jsonl(self.missing_image_path, result.missing_images)
+        write_jsonl(self.memo_path, result.memos)
+        write_jsonl(self.image_path, result.images)
+        write_jsonl(self.missing_image_path, result.missing_images)
         self._copy_images(result.images, raw_root)
-
-    @staticmethod
-    def _write_jsonl(
-        path: Path,
-        records: Sequence[MemoRecord | ImageRecord | MissingImageRecord],
-    ) -> None:
-        with open(path, "w", encoding="utf-8") as handle:
-            for record in records:
-                handle.write(json.dumps(record.to_dict(), ensure_ascii=False) + "\n")
 
     def _copy_images(self, images: list[ImageRecord], raw_root: Path) -> None:
         for image in images:

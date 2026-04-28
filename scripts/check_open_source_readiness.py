@@ -7,7 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 BLOCKED_TRACKED_PREFIXES = (
     "raw/",
     "store/",

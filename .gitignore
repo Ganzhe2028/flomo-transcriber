@@ -28,7 +28,6 @@ __pycache__/
 !/llm_chunks/.gitkeep
 
 /preview/*
-!/preview/.gitkeep
 
 /reports/*
 !/reports/.gitkeep

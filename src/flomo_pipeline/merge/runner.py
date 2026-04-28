@@ -1,29 +1,14 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from flomo_pipeline.common.io import read_jsonl, write_jsonl
 from flomo_pipeline.merge.models import MergeStats, MonthlyImageRecord, MonthlyMemoRecord
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 MONTHLY_FILE_SUFFIX = ".enriched.jsonl"
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    records: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            records.append(json.loads(line))
-    return records
-
-
-def _write_jsonl(path: Path, records: list[MonthlyMemoRecord]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
-        for record in records:
-            handle.write(json.dumps(record.to_dict(), ensure_ascii=False) + "\n")
 
 
 def _build_nested_image(record: dict[str, Any]) -> MonthlyImageRecord:
@@ -58,8 +43,8 @@ class MonthlyMergeRunner:
         self.image_enriched_path = store_root / "image.enriched.jsonl"
 
     def run(self) -> tuple[dict[str, list[MonthlyMemoRecord]], MergeStats]:
-        memos = _load_jsonl(self.memo_path)
-        enriched_images = _load_jsonl(self.image_enriched_path)
+        memos = read_jsonl(self.memo_path)
+        enriched_images = read_jsonl(self.image_enriched_path)
 
         images_by_memo: dict[str, list[MonthlyImageRecord]] = {}
         for image_record in enriched_images:
@@ -94,7 +79,7 @@ class MonthlyMergeRunner:
         self._prepare_output_dir(grouped_records)
 
         for month, month_records in grouped_records.items():
-            _write_jsonl(self.monthly_root / f"{month}{MONTHLY_FILE_SUFFIX}", month_records)
+            write_jsonl(self.monthly_root / f"{month}{MONTHLY_FILE_SUFFIX}", month_records)
 
         stats = MergeStats(
             memo_count=sum(len(month_records) for month_records in grouped_records.values()),

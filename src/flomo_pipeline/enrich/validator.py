@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any
+from enum import StrEnum
+from typing import TYPE_CHECKING
+
+from flomo_pipeline.common.validation import (
+    Severity,
+    ValidationReport,
+    Violation,
+    load_jsonl_for_validation,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
-class Severity(str, Enum):
-    ERROR = "error"
-
-
-class Rule(str, Enum):
+class Rule(StrEnum):
     E1_IMAGE_ID_UNIQUE = "E1"
     E2_IMAGE_ID_EXISTS_IN_RAW = "E2"
     E3_MEMO_ID_MATCHES_RAW = "E3"
@@ -44,76 +47,6 @@ REQUIRED_FIELDS = {
 PATH_FIELDS = {"relative_path", "source_relpath"}
 
 
-@dataclass(frozen=True)
-class Violation:
-    rule: Rule
-    severity: Severity
-    message: str
-    line: int
-    record_id: str
-
-
-@dataclass
-class ValidationReport:
-    violations: list[Violation] = field(default_factory=list)
-
-    @property
-    def errors(self) -> list[Violation]:
-        return self.violations
-
-    @property
-    def ok(self) -> bool:
-        return len(self.violations) == 0
-
-    def add(self, violation: Violation) -> None:
-        self.violations.append(violation)
-
-    def format_summary(self) -> str:
-        if self.ok:
-            return "Validation passed (0 error(s))"
-        return f"Validation failed: {len(self.violations)} error(s)"
-
-    def format_detail(self) -> str:
-        lines = ["-- image.enriched --"]
-        for violation in self.violations:
-            location = f"line {violation.line}" if violation.line > 0 else "global"
-            record_suffix = f" [{violation.record_id}]" if violation.record_id else ""
-            lines.append(
-                f"  {violation.severity.value.upper():7} {violation.rule.value:3} "
-                f"{location:>10}{record_suffix}  {violation.message}"
-            )
-        lines.append("")
-        lines.append(self.format_summary())
-        return "\n".join(lines)
-
-
-def _load_jsonl(path: Path, report: ValidationReport, rule: Rule) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    if not path.exists():
-        report.add(
-            Violation(rule=rule, severity=Severity.ERROR, message=f"File not found: {path}", line=0, record_id="")
-        )
-        return records
-
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        line = raw_line.strip()
-        if not line:
-            continue
-        try:
-            records.append(json.loads(line))
-        except json.JSONDecodeError as exc:
-            report.add(
-                Violation(
-                    rule=rule,
-                    severity=Severity.ERROR,
-                    message=f"JSON parse error: {exc}",
-                    line=line_number,
-                    record_id="",
-                )
-            )
-    return records
-
-
 class EnrichedImageValidator:
     def __init__(self, *, store_root: Path) -> None:
         self.store_root = store_root
@@ -121,9 +54,22 @@ class EnrichedImageValidator:
         self.image_enriched_path = store_root / "image.enriched.jsonl"
 
     def validate(self) -> ValidationReport:
-        report = ValidationReport()
-        raw_images = _load_jsonl(self.image_raw_path, report, Rule.R1_IMAGE_RAW_JSONL_PARSEABLE)
-        enriched_images = _load_jsonl(self.image_enriched_path, report, Rule.R2_IMAGE_ENRICHED_JSONL_PARSEABLE)
+        report = ValidationReport(
+            default_table="image.enriched",
+            table_order=("image.raw", "image.enriched"),
+        )
+        raw_images = load_jsonl_for_validation(
+            self.image_raw_path,
+            report=report,
+            table="image.raw",
+            rule=Rule.R1_IMAGE_RAW_JSONL_PARSEABLE,
+        )
+        enriched_images = load_jsonl_for_validation(
+            self.image_enriched_path,
+            report=report,
+            table="image.enriched",
+            rule=Rule.R2_IMAGE_ENRICHED_JSONL_PARSEABLE,
+        )
 
         raw_by_id = {str(record.get("image_id", "")): record for record in raw_images}
         seen_ids: set[str] = set()
@@ -220,7 +166,9 @@ class EnrichedImageValidator:
                     )
                 )
 
-            if status == "failed" and not (isinstance(error_message, str) and error_message.strip()):
+            if status == "failed" and not (
+                isinstance(error_message, str) and error_message.strip()
+            ):
                 report.add(
                     Violation(
                         rule=Rule.E7_FAILED_HAS_ERROR,

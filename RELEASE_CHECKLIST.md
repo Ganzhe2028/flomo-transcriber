@@ -6,8 +6,8 @@ Use this checklist before publishing a public release.
 
 - [ ] `git status --short --ignored` shows no tracked private data.
 - [ ] `git ls-files` contains only code, tests, docs, config, and `.gitkeep`.
-- [ ] `raw/`, `store/`, `monthly/`, `llm_chunks/`, `reports/`, and `preview/`
-      contain no tracked real data.
+- [ ] `raw/`, `store/`, `monthly/`, `llm_chunks/`, `reports/`, and local
+      `preview/` if present contain no tracked real data.
 - [ ] `.env` and `.env.*` files are ignored.
 - [ ] `.env.example` contains placeholders only.
 

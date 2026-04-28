@@ -29,6 +29,8 @@ def get_image_size(image_path: Path) -> tuple[int, int]:
     try:
         with Image.open(image_path) as image:
             transposed = ImageOps.exif_transpose(image)
+            if transposed is None:
+                transposed = image
             return transposed.size
     except OSError as exc:
         raise ImageSliceError(f"Could not inspect image dimensions: {exc}") from exc
@@ -59,6 +61,8 @@ def create_image_slices(
     try:
         with Image.open(image_path) as opened_image:
             image = ImageOps.exif_transpose(opened_image)
+            if image is None:
+                image = opened_image
             width, height = image.size
             if width <= 0 or height <= 0:
                 raise ImageSliceError(f"Invalid image dimensions: {width}x{height}")

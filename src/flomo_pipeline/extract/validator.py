@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
-import json
 import re
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
+
+from flomo_pipeline.common.validation import (
+    Severity,
+    ValidationReport,
+    Violation,
+    load_jsonl_for_validation,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
-class Severity(str, Enum):
-    ERROR = "error"
-    WARNING = "warning"
-
-
-class Rule(str, Enum):
+class Rule(StrEnum):
     C1_MEMO_ID_UNIQUE = "C1"
     C2_IMAGE_ID_UNIQUE = "C2"
     C3_IMAGE_COUNT_CONSISTENT = "C3"
@@ -56,101 +59,6 @@ MISSING_PATH_FIELDS = {"source_relpath"}
 ISO8601_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$")
 
 
-@dataclass(frozen=True)
-class Violation:
-    rule: Rule
-    severity: Severity
-    message: str
-    table: str
-    line: int
-    record_id: str
-
-
-@dataclass
-class ValidationReport:
-    violations: list[Violation] = field(default_factory=list)
-
-    @property
-    def errors(self) -> list[Violation]:
-        return [violation for violation in self.violations if violation.severity == Severity.ERROR]
-
-    @property
-    def warnings(self) -> list[Violation]:
-        return [violation for violation in self.violations if violation.severity == Severity.WARNING]
-
-    @property
-    def ok(self) -> bool:
-        return not self.errors
-
-    def add(self, violation: Violation) -> None:
-        self.violations.append(violation)
-
-    def format_summary(self) -> str:
-        error_count = len(self.errors)
-        warning_count = len(self.warnings)
-        if self.ok:
-            return f"Validation passed ({warning_count} warning(s))"
-        return f"Validation failed: {error_count} error(s), {warning_count} warning(s)"
-
-    def format_detail(self) -> str:
-        lines: list[str] = []
-        by_table: dict[str, list[Violation]] = {}
-        for violation in self.violations:
-            by_table.setdefault(violation.table, []).append(violation)
-
-        for table in ("memo.raw", "image.raw", "missing_image.raw", "cross-table"):
-            table_violations = by_table.get(table)
-            if not table_violations:
-                continue
-            lines.append(f"\n-- {table} --")
-            for violation in sorted(table_violations, key=lambda item: (item.line, item.rule.value)):
-                location = f"line {violation.line}" if violation.line > 0 else "global"
-                record_suffix = f" [{violation.record_id}]" if violation.record_id else ""
-                lines.append(
-                    f"  {violation.severity.value.upper():7} {violation.rule.value:3} "
-                    f"{location:>10}{record_suffix}  {violation.message}"
-                )
-
-        lines.append("")
-        lines.append(self.format_summary())
-        return "\n".join(lines)
-
-
-def _load_jsonl(path: Path, table_name: str, report: ValidationReport, rule: Rule) -> list[dict]:
-    records: list[dict] = []
-    if not path.exists():
-        report.add(
-            Violation(
-                rule=rule,
-                severity=Severity.ERROR,
-                message=f"File not found: {path}",
-                table=table_name,
-                line=0,
-                record_id="",
-            )
-        )
-        return records
-
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        line = raw_line.strip()
-        if not line:
-            continue
-        try:
-            records.append(json.loads(line))
-        except json.JSONDecodeError as exc:
-            report.add(
-                Violation(
-                    rule=rule,
-                    severity=Severity.ERROR,
-                    message=f"JSON parse error: {exc}",
-                    table=table_name,
-                    line=line_number,
-                    record_id="",
-                )
-            )
-    return records
-
-
 class StoreValidator:
     def __init__(
         self,
@@ -166,15 +74,28 @@ class StoreValidator:
         self.missing_image_path = store_root / "missing_image.raw.jsonl"
 
     def validate(self) -> ValidationReport:
-        report = ValidationReport()
+        report = ValidationReport(
+            table_order=("memo.raw", "image.raw", "missing_image.raw", "cross-table"),
+            include_warning_count=True,
+        )
 
-        memos = _load_jsonl(self.memo_path, "memo.raw", report, Rule.R1_MEMO_JSONL_PARSEABLE)
-        images = _load_jsonl(self.image_path, "image.raw", report, Rule.R2_IMAGE_JSONL_PARSEABLE)
-        missing_images = _load_jsonl(
+        memos = load_jsonl_for_validation(
+            self.memo_path,
+            table="memo.raw",
+            report=report,
+            rule=Rule.R1_MEMO_JSONL_PARSEABLE,
+        )
+        images = load_jsonl_for_validation(
+            self.image_path,
+            table="image.raw",
+            report=report,
+            rule=Rule.R2_IMAGE_JSONL_PARSEABLE,
+        )
+        missing_images = load_jsonl_for_validation(
             self.missing_image_path,
-            "missing_image.raw",
-            report,
-            Rule.R3_MISSING_IMAGE_JSONL_PARSEABLE,
+            table="missing_image.raw",
+            report=report,
+            rule=Rule.R3_MISSING_IMAGE_JSONL_PARSEABLE,
         )
 
         if not memos and not images and not missing_images:
@@ -192,7 +113,14 @@ class StoreValidator:
         self._check_id_unique(images, "image.raw", "image_id", Rule.C2_IMAGE_ID_UNIQUE, report)
 
         memo_ids = {record.get("memo_id", "") for record in memos}
-        self._check_fk_exists(images, "image.raw", "memo_id", memo_ids, Rule.C4_IMAGE_MEMO_ID_EXISTS, report)
+        self._check_fk_exists(
+            images,
+            "image.raw",
+            "memo_id",
+            memo_ids,
+            Rule.C4_IMAGE_MEMO_ID_EXISTS,
+            report,
+        )
         self._check_fk_exists(
             missing_images,
             "missing_image.raw",
@@ -230,12 +158,12 @@ class StoreValidator:
         return report
 
     @staticmethod
-    def _record_id(record: dict) -> str:
+    def _record_id(record: dict[str, Any]) -> str:
         return str(record.get("memo_id") or record.get("image_id") or "")
 
     def _check_required_fields(
         self,
-        records: list[dict],
+        records: list[dict[str, Any]],
         table: str,
         required: set[str],
         report: ValidationReport,
@@ -256,7 +184,7 @@ class StoreValidator:
 
     def _check_empty_keys(
         self,
-        records: list[dict],
+        records: list[dict[str, Any]],
         table: str,
         key_fields: set[str],
         report: ValidationReport,
@@ -277,7 +205,7 @@ class StoreValidator:
 
     def _check_id_unique(
         self,
-        records: list[dict],
+        records: list[dict[str, Any]],
         table: str,
         id_field: str,
         rule: Rule,
@@ -302,7 +230,7 @@ class StoreValidator:
 
     def _check_fk_exists(
         self,
-        records: list[dict],
+        records: list[dict[str, Any]],
         table: str,
         fk_field: str,
         parent_ids: set[str],
@@ -325,7 +253,7 @@ class StoreValidator:
 
     def _check_relative_paths(
         self,
-        records: list[dict],
+        records: list[dict[str, Any]],
         table: str,
         path_fields: set[str],
         report: ValidationReport,
@@ -333,7 +261,9 @@ class StoreValidator:
         for line_number, record in enumerate(records, start=1):
             for field_name in sorted(path_fields):
                 value = record.get(field_name, "")
-                if value and isinstance(value, str) and (value.startswith("/") or value.startswith("\\")):
+                if value and isinstance(value, str) and (
+                    value.startswith("/") or value.startswith("\\")
+                ):
                     report.add(
                         Violation(
                             rule=Rule.C7_PATH_RELATIVE,
@@ -345,7 +275,11 @@ class StoreValidator:
                         )
                     )
 
-    def _check_image_files_exist(self, images: list[dict], report: ValidationReport) -> None:
+    def _check_image_files_exist(
+        self,
+        images: list[dict[str, Any]],
+        report: ValidationReport,
+    ) -> None:
         for line_number, record in enumerate(images, start=1):
             image_relpath = record.get("image_relpath", "")
             if not image_relpath:
@@ -365,9 +299,9 @@ class StoreValidator:
 
     def _check_source_files_exist(
         self,
-        memos: list[dict],
-        images: list[dict],
-        missing_images: list[dict],
+        memos: list[dict[str, Any]],
+        images: list[dict[str, Any]],
+        missing_images: list[dict[str, Any]],
         report: ValidationReport,
     ) -> None:
         for line_number, record in enumerate(memos, start=1):
@@ -399,7 +333,7 @@ class StoreValidator:
         self,
         table: str,
         line_number: int,
-        record: dict,
+        record: dict[str, Any],
         should_exist: bool,
         report: ValidationReport,
     ) -> None:
@@ -431,7 +365,7 @@ class StoreValidator:
                 )
             )
 
-    def _check_iso8601(self, memos: list[dict], report: ValidationReport) -> None:
+    def _check_iso8601(self, memos: list[dict[str, Any]], report: ValidationReport) -> None:
         for line_number, record in enumerate(memos, start=1):
             created_at = record.get("created_at", "")
             if created_at and not ISO8601_RE.match(str(created_at)):
@@ -448,9 +382,9 @@ class StoreValidator:
 
     def _check_image_count(
         self,
-        memos: list[dict],
-        images: list[dict],
-        missing_images: list[dict],
+        memos: list[dict[str, Any]],
+        images: list[dict[str, Any]],
+        missing_images: list[dict[str, Any]],
         report: ValidationReport,
     ) -> None:
         image_count_by_memo: dict[str, int] = {}
@@ -480,7 +414,7 @@ class StoreValidator:
                         )
                     )
 
-    def _check_frontmatter(self, memos: list[dict], report: ValidationReport) -> None:
+    def _check_frontmatter(self, memos: list[dict[str, Any]], report: ValidationReport) -> None:
         for line_number, record in enumerate(memos, start=1):
             body_md = record.get("body_md", "")
             if isinstance(body_md, str) and body_md.startswith("---\n"):

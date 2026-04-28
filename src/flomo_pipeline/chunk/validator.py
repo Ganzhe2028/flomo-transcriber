@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-import json
 import re
-from dataclasses import dataclass, field
-from pathlib import Path
-from enum import Enum
-from typing import Any
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
+from flomo_pipeline.common.validation import (
+    Severity,
+    ValidationReport,
+    Violation,
+    load_json_for_validation,
+    load_jsonl_for_validation,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 MONTHLY_FILE_SUFFIX = ".enriched.jsonl"
 CHUNK_FILE_SUFFIX = ".json"
@@ -14,11 +21,7 @@ CHUNK_FILE_PATTERN = re.compile(r"^(\d{4}-\d{2})-(\d{4})\.json$")
 ISO8601_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$")
 
 
-class Severity(str, Enum):
-    ERROR = "error"
-
-
-class Rule(str, Enum):
+class Rule(StrEnum):
     C1_CHUNK_ID_UNIQUE = "C1"
     C2_MONTH_MATCH = "C2"
     C3_SOURCE_MEMO_EXISTS = "C3"
@@ -68,98 +71,6 @@ REQUIRED_SOURCE_IMAGE_FIELDS = {
 }
 
 
-@dataclass(frozen=True)
-class Violation:
-    rule: Rule
-    severity: Severity
-    message: str
-    table: str
-    record_id: str
-
-
-@dataclass
-class ValidationReport:
-    violations: list[Violation] = field(default_factory=list)
-
-    @property
-    def ok(self) -> bool:
-        return len(self.violations) == 0
-
-    def add(self, violation: Violation) -> None:
-        self.violations.append(violation)
-
-    def format_summary(self) -> str:
-        if self.ok:
-            return "Validation passed (0 error(s))"
-        return f"Validation failed: {len(self.violations)} error(s)"
-
-    def format_detail(self) -> str:
-        lines: list[str] = []
-        by_table: dict[str, list[Violation]] = {}
-        for violation in self.violations:
-            by_table.setdefault(violation.table, []).append(violation)
-
-        for table in sorted(by_table):
-            lines.append(f"\n-- {table} --")
-            for violation in by_table[table]:
-                record_suffix = f" [{violation.record_id}]" if violation.record_id else ""
-                lines.append(
-                    f"  {violation.severity.value.upper():7} {violation.rule.value:3}{record_suffix}  {violation.message}"
-                )
-
-        lines.append("")
-        lines.append(self.format_summary())
-        return "\n".join(lines)
-
-
-def _load_jsonl(path: Path, report: ValidationReport, table: str) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    if not path.exists():
-        report.add(
-            Violation(
-                rule=Rule.R1_MONTHLY_JSONL_PARSEABLE,
-                severity=Severity.ERROR,
-                message=f"File not found: {path}",
-                table=table,
-                record_id="",
-            )
-        )
-        return records
-
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        if not raw_line.strip():
-            continue
-        try:
-            records.append(json.loads(raw_line))
-        except json.JSONDecodeError as exc:
-            report.add(
-                Violation(
-                    rule=Rule.R1_MONTHLY_JSONL_PARSEABLE,
-                    severity=Severity.ERROR,
-                    message=f"JSON parse error: {exc}",
-                    table=table,
-                    record_id="",
-                )
-            )
-    return records
-
-
-def _load_json(path: Path, report: ValidationReport, table: str) -> dict[str, Any] | None:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        report.add(
-            Violation(
-                rule=Rule.R2_CHUNK_JSON_PARSEABLE,
-                severity=Severity.ERROR,
-                message=f"JSON parse error: {exc}",
-                table=table,
-                record_id=path.name,
-            )
-        )
-        return None
-
-
 class ChunkValidator:
     def __init__(self, *, monthly_root: Path, chunks_root: Path, month: str | None = None) -> None:
         self.monthly_root = monthly_root
@@ -167,15 +78,16 @@ class ChunkValidator:
         self.month = month
 
     def validate(self) -> ValidationReport:
-        report = ValidationReport()
+        report = ValidationReport(show_line_numbers=False)
         seen_chunk_ids: set[str] = set()
 
         target_months = self._discover_months()
         for month in target_months:
-            monthly_records = _load_jsonl(
+            monthly_records = load_jsonl_for_validation(
                 self.monthly_root / f"{month}{MONTHLY_FILE_SUFFIX}",
-                report,
-                f"monthly/{month}.enriched.jsonl",
+                report=report,
+                table=f"monthly/{month}.enriched.jsonl",
+                rule=Rule.R1_MONTHLY_JSONL_PARSEABLE,
             )
             monthly_by_id = {str(record.get("memo_id", "")): record for record in monthly_records}
             chunk_dir = self.chunks_root / month
@@ -198,7 +110,12 @@ class ChunkValidator:
             chunk_indexes: list[int] = []
 
             for chunk_path in chunk_paths:
-                record = _load_json(chunk_path, report, f"llm_chunks/{month}")
+                record = load_json_for_validation(
+                    chunk_path,
+                    report=report,
+                    table=f"llm_chunks/{month}",
+                    rule=Rule.R2_CHUNK_JSON_PARSEABLE,
+                )
                 if record is None:
                     continue
 
@@ -209,7 +126,10 @@ class ChunkValidator:
                         Violation(
                             rule=Rule.R3_REQUIRED_FIELD_MISSING,
                             severity=Severity.ERROR,
-                            message=f"Missing required field(s): {', '.join(sorted(missing_fields))}",
+                    message=(
+                        "Missing required field(s): "
+                        f"{', '.join(sorted(missing_fields))}"
+                    ),
                             table=f"llm_chunks/{month}",
                             record_id=chunk_id or chunk_path.name,
                         )
@@ -273,7 +193,10 @@ class ChunkValidator:
                         )
                     )
 
-                if str(record.get("status", "")) == "success" and not str(record.get("text", "")).strip():
+                if (
+                    str(record.get("status", "")) == "success"
+                    and not str(record.get("text", "")).strip()
+                ):
                     report.add(
                         Violation(
                             rule=Rule.C6_TEXT_NON_EMPTY,
@@ -482,7 +405,10 @@ class ChunkValidator:
                     Violation(
                         rule=Rule.R3_REQUIRED_FIELD_MISSING,
                         severity=Severity.ERROR,
-                        message=f"source_item missing required field(s): {', '.join(sorted(missing_fields))}",
+                        message=(
+                            "source_item missing required field(s): "
+                            f"{', '.join(sorted(missing_fields))}"
+                        ),
                         table=f"llm_chunks/{month}",
                         record_id=memo_id or chunk_id,
                     )

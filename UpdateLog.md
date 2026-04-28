@@ -8,6 +8,27 @@
 - `b`：重要功能、处理流程升级、版本更新换代。
 - `c`：小功能、日常修正、文档或脚本微调。
 
+## 2026-04-28 - 0.3.0 级别更新
+
+### 本次更新内容
+
+- 梳理仓库结构，确认现有 stage 拆分仍合理，主要臃肿点是重复的校验和文件读写基础代码。
+- 新增 `src/flomo_pipeline/common/io.py`，统一 JSON、JSONL 和文本写入读取。
+- 新增 `src/flomo_pipeline/common/validation.py`，统一校验报告、违规项、严重级别和 JSON 解析错误格式。
+- Stage 1-5 的 validator 继续保留各自业务规则，但共享同一套报告结构。
+- Stage runner 和 writer 改用共享文件读写工具，减少重复实现。
+- 删除无引用的 `src/flomo_pipeline/preview/` 空包和 `preview/.gitkeep` 占位文件；`.gitignore` 仍保护本地遗留的 `preview/` 输出。
+- 删除独立的 `fail-image-handle-guidance.md`，将失败图片外部识别写回流程合并进中英文 README。
+- 新增 `AGENTS.md`，记录 AI Agent 接手仓库时的边界、禁区和验证要求。
+- 更新中英文 README 和 release checklist，说明当前目录边界、`common/` 用途和本地遗留 `preview/` 的处理方式。
+
+### 验证结果
+
+- 完整测试集：58 passed。
+- 类型检查：`python -m mypy src` 通过。
+- 本次改动范围 Ruff 检查通过。
+- Open-source readiness 检查通过；本地 `raw/`、`store/`、`monthly/`、`llm_chunks/` 中仍有被忽略的私人数据，不能直接打包工作树发布。
+
 ## 2026-04-28 - 0.2.0 级别更新
 
 覆盖范围：2026-04-27 至 2026-04-28，约 4 天内的本地更新。

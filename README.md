@@ -262,7 +262,6 @@ store/        Stage 1-2 输出：raw JSONL、图片副本、图片增强结果
 monthly/      Stage 3 输出：按月合并后的 memo 记录
 llm_chunks/   Stage 4 输出：给外部 LLM 读取的 chunk JSON
 reports/      Stage 5 输出：可选的本地月度报告
-preview/      预留目录
 scripts/      命令行入口
 src/          Python 源码
 tests/        测试
@@ -333,6 +332,29 @@ Stage 1-4 是推荐主流程。Stage 5 是可选功能；如果你要用 OpenRou
 python scripts/enrich_images.py --store-root store --provider lmstudio --overwrite
 ```
 
+### 手动写回外部识别结果
+
+如果你用外部模型或人工方式修复失败图片，只改 `store/image.enriched.jsonl` 里对应 `image_id` 的增强字段，不改 `store/image.raw.jsonl`。
+
+| 内容 | 字段 |
+| --- | --- |
+| 图片里的文字 | `ocr_text` |
+| 图片画面说明 | `visual_description` |
+| 外部模型名称 | `model_name` |
+| 人工补录标记 | `prompt_version`, `run_id` |
+| 成功状态 | `status: "success"` |
+| 失败原因 | `error_message: null` |
+
+写回后重新校验并生成下游文件：
+
+```bash
+python scripts/validate_enriched_images.py --store-root store
+python scripts/merge_monthly.py --store-root store --monthly-root monthly --month 2025-04
+python scripts/validate_monthly.py --store-root store --monthly-root monthly --month 2025-04
+python scripts/build_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-04 --overwrite
+python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-04
+```
+
 ## Stage 4 chunk 说明
 
 chunk 是给 LLM 读取的最终上下文文件。
@@ -384,16 +406,17 @@ python scripts/validate_reports.py --chunks-root llm_chunks --reports-root repor
 
 ```text
 src/flomo_pipeline/
+├── common/
 ├── extract/
 ├── enrich/
 ├── merge/
 ├── chunk/
-├── report/
-├── preview/
-└── common/
+└── report/
 ```
 
 说明：项目的公开名称是 `flomo-transcriber`。内部 Python import 包仍叫 `flomo_pipeline`，这是为了保持现有脚本和测试兼容。
+
+`common/` 放共享的文件读写和校验报告工具。各 stage 仍保留自己的 runner、validator 和数据模型。
 
 常用命令：
 
@@ -431,9 +454,10 @@ make test
 
 Agent 接手时先读这三处：
 
-1. `README.md` 或 `README.en.md`
-2. `pyproject.toml`
-3. `tests/`
+1. `AGENTS.md`
+2. `README.md` 或 `README.en.md`
+3. `pyproject.toml`
+4. `tests/`
 
 不要默认重构旧阶段。已有边界如下：
 
@@ -555,6 +579,6 @@ python scripts/check_open_source_readiness.py
 - `monthly/`
 - `llm_chunks/`
 - `reports/`
-- `preview/`
+- 本地遗留的 `preview/`，如果存在
 
 当前 private 工作仓库的旧 Git history 不适合直接公开。公开发布应使用 clean orphan branch 或全新的 public repo。

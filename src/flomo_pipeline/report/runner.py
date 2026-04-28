@@ -1,35 +1,24 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from flomo_pipeline.common.io import read_json, write_json, write_text
 from flomo_pipeline.report.models import (
     REPORT_BUILD_VERSION,
+    REPORT_STATUS,
     ReportBuildStats,
     ReportRecord,
     ReportSection,
 )
-from flomo_pipeline.report.provider import ReportProvider
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from flomo_pipeline.report.provider import ReportProvider
 
 CHUNK_FILE_SUFFIX = ".json"
 REPORT_JSON_SUFFIX = ".report.json"
 REPORT_MD_SUFFIX = ".report.md"
-
-
-def _load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
-def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text.rstrip() + "\n", encoding="utf-8")
 
 
 class ReportBuildRunner:
@@ -60,7 +49,7 @@ class ReportBuildRunner:
                 print(f"[{month}] skipped (existing report)")
                 continue
 
-            chunks = [_load_json(path) for path in chunk_paths]
+            chunks = [read_json(path) for path in chunk_paths]
             report = self._build_month_report(month=month, chunks=chunks)
             reports[month] = report
             stats.months_built += 1
@@ -70,8 +59,8 @@ class ReportBuildRunner:
                 1 for section in report.sections if section.status == "failed"
             )
 
-            _write_json(json_path, report.to_dict())
-            _write_text(md_path, report.report_md)
+            write_json(json_path, report.to_dict())
+            write_text(md_path, report.report_md)
             print(f"[{month}] built report from {len(chunks)} chunks")
 
         return reports, stats
@@ -108,7 +97,7 @@ class ReportBuildRunner:
             )
 
         failed_sections = [section for section in sections if section.status == "failed"]
-        status = "failed" if failed_sections else "success"
+        status: REPORT_STATUS = "failed" if failed_sections else "success"
         error_message = (
             f"{len(failed_sections)} chunk summary section(s) failed"
             if failed_sections
@@ -152,7 +141,7 @@ class ReportBuildRunner:
                 lines.extend(
                     [
                         "",
-                        f"- status: failed",
+                        "- status: failed",
                         f"- error: {section.error_message or 'unknown error'}",
                     ]
                 )

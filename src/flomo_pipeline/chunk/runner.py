@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from flomo_pipeline.chunk.models import (
     ChunkBuildStats,
@@ -12,27 +10,15 @@ from flomo_pipeline.chunk.models import (
     ChunkSourceItem,
 )
 from flomo_pipeline.chunk.token_estimator import estimate_tokens
+from flomo_pipeline.common.io import read_jsonl, write_json
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 MONTHLY_FILE_SUFFIX = ".enriched.jsonl"
 CHUNK_FILE_SUFFIX = ".json"
 BUILD_VERSION = "chunk-v1"
 STRATEGY = "sequential-size-pack:v1"
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    records: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            records.append(json.loads(line))
-    return records
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _chunk_file_path(chunks_root: Path, month: str, chunk_id: str) -> Path:
@@ -76,7 +62,7 @@ class ChunkBuildRunner:
                 print(f"[{month}] skipped (existing output)")
                 continue
 
-            monthly_records = _load_jsonl(monthly_path)
+            monthly_records = read_jsonl(monthly_path)
             if self.overwrite and month_output_dir.exists():
                 for path in existing_chunk_files:
                     path.unlink()
@@ -89,7 +75,10 @@ class ChunkBuildRunner:
 
             month_output_dir.mkdir(parents=True, exist_ok=True)
             for chunk in chunks:
-                _write_json(_chunk_file_path(self.chunks_root, month, chunk.chunk_id), chunk.to_dict())
+                write_json(
+                    _chunk_file_path(self.chunks_root, month, chunk.chunk_id),
+                    chunk.to_dict(),
+                )
             print(f"[{month}] built {len(chunks)} chunks from {len(monthly_records)} memos")
 
         return grouped_chunks, stats
@@ -107,7 +96,12 @@ class ChunkBuildRunner:
             pairs.append((month, path))
         return pairs
 
-    def _build_month_chunks(self, *, month: str, monthly_records: list[dict[str, Any]]) -> list[ChunkRecord]:
+    def _build_month_chunks(
+        self,
+        *,
+        month: str,
+        monthly_records: list[dict[str, Any]],
+    ) -> list[ChunkRecord]:
         normalized_items = [self._normalize_monthly_record(record) for record in monthly_records]
         chunks: list[list[ChunkSourceItem]] = []
         current_chunk: list[ChunkSourceItem] = []

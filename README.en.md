@@ -252,7 +252,6 @@ store/        Stage 1-2 outputs: raw JSONL, copied images, image enrichment
 monthly/      Stage 3 output: monthly merged memo records
 llm_chunks/   Stage 4 output: chunk JSON files for external LLMs
 reports/      Stage 5 output: optional local monthly reports
-preview/      Reserved directory
 scripts/      CLI entry points
 src/          Python source code
 tests/        Tests
@@ -323,6 +322,29 @@ Existing successful records are skipped by default. To rerun successful records:
 python scripts/enrich_images.py --store-root store --provider lmstudio --overwrite
 ```
 
+### Manually Write Back External Recognition
+
+If you fix failed images with an external model or manual recognition, only edit the enrichment fields for the matching `image_id` in `store/image.enriched.jsonl`. Do not edit `store/image.raw.jsonl`.
+
+| Content | Field |
+| --- | --- |
+| Text in the image | `ocr_text` |
+| Visual description | `visual_description` |
+| External model name | `model_name` |
+| Manual backfill marker | `prompt_version`, `run_id` |
+| Success state | `status: "success"` |
+| Cleared failure | `error_message: null` |
+
+After writing back, validate and regenerate downstream files:
+
+```bash
+python scripts/validate_enriched_images.py --store-root store
+python scripts/merge_monthly.py --store-root store --monthly-root monthly --month 2025-04
+python scripts/validate_monthly.py --store-root store --monthly-root monthly --month 2025-04
+python scripts/build_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-04 --overwrite
+python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-04
+```
+
 ## Stage 4 Chunks
 
 Chunks are the final context files for LLMs.
@@ -374,16 +396,17 @@ Source layout:
 
 ```text
 src/flomo_pipeline/
+├── common/
 ├── extract/
 ├── enrich/
 ├── merge/
 ├── chunk/
-├── report/
-├── preview/
-└── common/
+└── report/
 ```
 
 The public project name is `flomo-transcriber`. The internal Python import package remains `flomo_pipeline` for compatibility with existing scripts and tests.
+
+`common/` contains shared file I/O and validation report helpers. Each stage still keeps its own runner, validator, and data models.
 
 Common commands:
 
@@ -421,9 +444,10 @@ Code principles:
 
 If you are an AI agent taking over this repo, read these first:
 
-1. `README.md` or `README.en.md`
-2. `pyproject.toml`
-3. `tests/`
+1. `AGENTS.md`
+2. `README.md` or `README.en.md`
+3. `pyproject.toml`
+4. `tests/`
 
 Do not default to refactoring existing stages. Current boundaries:
 
@@ -545,6 +569,6 @@ The check confirms that real data from these directories is not tracked by Git:
 - `monthly/`
 - `llm_chunks/`
 - `reports/`
-- `preview/`
+- local legacy `preview/`, if present
 
 The old Git history of the private working repository is not suitable for direct public release. Publish from a clean orphan branch or a new public repository.

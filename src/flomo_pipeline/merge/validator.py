@@ -1,22 +1,25 @@
 from __future__ import annotations
 
-import json
 import re
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
+
+from flomo_pipeline.common.validation import (
+    Severity,
+    ValidationReport,
+    Violation,
+    load_jsonl_for_validation,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 MONTHLY_FILE_SUFFIX = ".enriched.jsonl"
 MONTHLY_FILE_PATTERN = re.compile(r"^(\d{4}-\d{2})\.enriched\.jsonl$")
 ISO8601_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$")
 
 
-class Severity(str, Enum):
-    ERROR = "error"
-
-
-class Rule(str, Enum):
+class Rule(StrEnum):
     M1_MEMO_ID_UNIQUE = "M1"
     M2_FILE_MONTH_MATCH = "M2"
     M3_MEMO_EXISTS_IN_RAW = "M3"
@@ -58,92 +61,6 @@ REQUIRED_IMAGE_FIELDS = {
 }
 
 
-@dataclass(frozen=True)
-class Violation:
-    rule: Rule
-    severity: Severity
-    message: str
-    table: str
-    line: int
-    record_id: str
-
-
-@dataclass
-class ValidationReport:
-    violations: list[Violation] = field(default_factory=list)
-
-    @property
-    def errors(self) -> list[Violation]:
-        return self.violations
-
-    @property
-    def ok(self) -> bool:
-        return len(self.violations) == 0
-
-    def add(self, violation: Violation) -> None:
-        self.violations.append(violation)
-
-    def format_summary(self) -> str:
-        if self.ok:
-            return "Validation passed (0 error(s))"
-        return f"Validation failed: {len(self.violations)} error(s)"
-
-    def format_detail(self) -> str:
-        lines: list[str] = []
-        by_table: dict[str, list[Violation]] = {}
-        for violation in self.violations:
-            by_table.setdefault(violation.table, []).append(violation)
-
-        for table in sorted(by_table):
-            lines.append(f"\n-- {table} --")
-            for violation in sorted(by_table[table], key=lambda item: (item.line, item.rule.value)):
-                location = f"line {violation.line}" if violation.line > 0 else "global"
-                record_suffix = f" [{violation.record_id}]" if violation.record_id else ""
-                lines.append(
-                    f"  {violation.severity.value.upper():7} {violation.rule.value:3} "
-                    f"{location:>10}{record_suffix}  {violation.message}"
-                )
-
-        lines.append("")
-        lines.append(self.format_summary())
-        return "\n".join(lines)
-
-
-def _load_jsonl(path: Path, table: str, report: ValidationReport, rule: Rule) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    if not path.exists():
-        report.add(
-            Violation(
-                rule=rule,
-                severity=Severity.ERROR,
-                message=f"File not found: {path}",
-                table=table,
-                line=0,
-                record_id="",
-            )
-        )
-        return records
-
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        line = raw_line.strip()
-        if not line:
-            continue
-        try:
-            records.append(json.loads(line))
-        except json.JSONDecodeError as exc:
-            report.add(
-                Violation(
-                    rule=rule,
-                    severity=Severity.ERROR,
-                    message=f"JSON parse error: {exc}",
-                    table=table,
-                    line=line_number,
-                    record_id="",
-                )
-            )
-    return records
-
-
 class MonthlyValidator:
     def __init__(
         self,
@@ -160,12 +77,17 @@ class MonthlyValidator:
 
     def validate(self) -> ValidationReport:
         report = ValidationReport()
-        memos = _load_jsonl(self.memo_path, "memo.raw", report, Rule.R1_MEMO_RAW_JSONL_PARSEABLE)
-        enriched_images = _load_jsonl(
+        memos = load_jsonl_for_validation(
+            self.memo_path,
+            table="memo.raw",
+            report=report,
+            rule=Rule.R1_MEMO_RAW_JSONL_PARSEABLE,
+        )
+        enriched_images = load_jsonl_for_validation(
             self.image_enriched_path,
-            "image.enriched",
-            report,
-            Rule.R2_IMAGE_ENRICHED_JSONL_PARSEABLE,
+            table="image.enriched",
+            report=report,
+            rule=Rule.R2_IMAGE_ENRICHED_JSONL_PARSEABLE,
         )
         raw_memos_by_month = self._group_raw_memos_by_month(memos)
         enriched_by_id = {str(record.get("image_id", "")): record for record in enriched_images}
@@ -182,7 +104,12 @@ class MonthlyValidator:
         for month in target_months:
             table_name = f"monthly/{month}.enriched.jsonl"
             file_path = self.monthly_root / f"{month}.enriched.jsonl"
-            month_records = _load_jsonl(file_path, table_name, report, Rule.R3_MONTHLY_JSONL_PARSEABLE)
+            month_records = load_jsonl_for_validation(
+                file_path,
+                table=table_name,
+                report=report,
+                rule=Rule.R3_MONTHLY_JSONL_PARSEABLE,
+            )
 
             if not month_records:
                 expected_raw = raw_memos_by_month.get(month, [])
@@ -217,7 +144,12 @@ class MonthlyValidator:
             month = str(memo.get("created_at", ""))[:7]
             grouped.setdefault(month, []).append(memo)
         for month_records in grouped.values():
-            month_records.sort(key=lambda record: (str(record.get("created_at", "")), str(record.get("memo_id", ""))))
+            month_records.sort(
+                key=lambda record: (
+                    str(record.get("created_at", "")),
+                    str(record.get("memo_id", "")),
+                )
+            )
         return grouped
 
     def _validate_month_file(
@@ -271,7 +203,10 @@ class MonthlyValidator:
                     Violation(
                         rule=Rule.M2_FILE_MONTH_MATCH,
                         severity=Severity.ERROR,
-                        message=f"Record month '{record_month}' does not match file month '{month}'",
+                        message=(
+                            f"Record month '{record_month}' does not match "
+                            f"file month '{month}'"
+                        ),
                         table=table_name,
                         line=line_number,
                         record_id=memo_id,
@@ -390,7 +325,10 @@ class MonthlyValidator:
                 Violation(
                     rule=Rule.R4_MISSING_REQUIRED_FIELD,
                     severity=Severity.ERROR,
-                    message=f"Nested image missing required field(s): {', '.join(sorted(missing_fields))}",
+                    message=(
+                        "Nested image missing required field(s): "
+                        f"{', '.join(sorted(missing_fields))}"
+                    ),
                     table=table_name,
                     line=line_number,
                     record_id=image_id or memo_id,
@@ -442,7 +380,10 @@ class MonthlyValidator:
                     Violation(
                         rule=Rule.M4_NESTED_IMAGE_EXISTS_IN_ENRICHED,
                         severity=Severity.ERROR,
-                        message=f"Nested image field '{field_name}' does not match image.enriched.jsonl",
+                        message=(
+                            f"Nested image field '{field_name}' does not match "
+                            "image.enriched.jsonl"
+                        ),
                         table=table_name,
                         line=line_number,
                         record_id=image_id,
