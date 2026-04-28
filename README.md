@@ -1,6 +1,6 @@
 # flomo-transcriber
 
-[English](README.en.md)
+[English](README.en.md) | [更新日志](UpdateLog.md)
 
 把你的 Flomo 记忆库变成 **LLM 友好**的资料包。
 

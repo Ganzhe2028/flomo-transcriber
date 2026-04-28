@@ -1,6 +1,6 @@
 # flomo-transcriber
 
-[中文](README.md)
+[中文](README.md) | [Update Log](UpdateLog.md)
 
 Turn your Flomo memory archive into files that LLMs can actually read.
 
