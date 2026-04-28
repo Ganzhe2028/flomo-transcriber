@@ -115,6 +115,24 @@ If your local model server allows concurrent predictions, add `--workers` to pro
 python scripts/enrich_images.py --store-root store --provider lmstudio --workers 4
 ```
 
+If a long screenshot, narrow screenshot, or heavily compressed screenshot fails as a whole image, enable sliced fallback. The command cuts tall images into vertical clips, reads them in order, then merges the result back into the original `image_id`:
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images
+```
+
+Defaults are `500px` clip height, `60px` overlap, and `2x` upscale before sending each clip to the model. To tune them:
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images --slice-height 500 --slice-overlap 60 --slice-upscale 2
+```
+
+If you already know a batch of tall images performs poorly as whole images, skip whole-image recognition:
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --force-slice-long-images
+```
+
 Stage 2 writes `store/image.enriched.jsonl` after each completed image. If you pause or close the run, the next run skips existing successful records and continues with failed or unfinished records.
 
 ### 5. Build LLM-Ready Chunks
@@ -289,8 +307,15 @@ Providers:
 - `FLOMO_VLM_API_KEY`: optional
 - `FLOMO_VLM_TIMEOUT_SECONDS`: optional, default `60`
 - `FLOMO_VLM_MAX_TOKENS`: optional, default `4096`, limits model output length for each image. If dense screenshots or photographed notes return a truncated JSON error, raise it further.
+- `FLOMO_VLM_SLICE_LONG_IMAGES`: optional, set to `true` to retry failed tall images as vertical clips.
+- `FLOMO_VLM_FORCE_SLICE_LONG_IMAGES`: optional, set to `true` to skip whole-image recognition for images taller than the slice height.
+- `FLOMO_VLM_SLICE_HEIGHT`: optional, default `500`, vertical clip height in pixels.
+- `FLOMO_VLM_SLICE_OVERLAP`: optional, default `60`, vertical overlap between clips so text is less likely to be cut in half.
+- `FLOMO_VLM_SLICE_UPSCALE`: optional, default `2`, upscale factor applied before sending each clip to the model.
 
 Image enrichment failures do not stop the whole run. The command finishes the first pass, then retries failed records only, up to 3 retry rounds. Each completed image is saved immediately. Records that still fail keep `status=failed` and the final error message.
+
+Sliced recognition does not change the JSONL structure. A successful long image is still written as one record for the original image, with merged content in `ocr_text` and `visual_description`.
 
 Existing successful records are skipped by default. To rerun successful records:
 

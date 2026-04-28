@@ -45,12 +45,49 @@ def main() -> None:
         default=MAX_FAILED_RETRIES,
         help="Retry failed records inside this run",
     )
+    parser.add_argument(
+        "--slice-long-images",
+        action="store_true",
+        default=None,
+        help="For LM Studio, retry failed long images as vertical clips",
+    )
+    parser.add_argument(
+        "--force-slice-long-images",
+        action="store_true",
+        default=None,
+        help="For LM Studio, skip whole-image recognition for images taller than slice height",
+    )
+    parser.add_argument(
+        "--slice-height",
+        type=int,
+        default=None,
+        help="Clip height in pixels for long-image slicing; default is 500",
+    )
+    parser.add_argument(
+        "--slice-overlap",
+        type=int,
+        default=None,
+        help="Vertical overlap in pixels between clips; default is 60",
+    )
+    parser.add_argument(
+        "--slice-upscale",
+        type=float,
+        default=None,
+        help="Upscale factor applied to each clip before recognition; default is 2",
+    )
     args = parser.parse_args()
 
     store_root = args.store_root.resolve()
 
     try:
-        provider = build_provider(args.provider)
+        provider = build_provider(
+            args.provider,
+            slice_long_images=args.slice_long_images,
+            force_slice_long_images=args.force_slice_long_images,
+            slice_height=args.slice_height,
+            slice_overlap=args.slice_overlap,
+            slice_upscale=args.slice_upscale,
+        )
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)

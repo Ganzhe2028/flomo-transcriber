@@ -5,6 +5,7 @@ description = "Turn local Flomo exports into validated LLM-ready text chunks"
 requires-python = ">=3.11"
 dependencies = [
     "beautifulsoup4>=4.12",
+    "Pillow>=10.0",
 ]
 
 [project.optional-dependencies]

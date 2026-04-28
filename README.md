@@ -125,6 +125,24 @@ python scripts/enrich_images.py --store-root store --provider lmstudio
 python scripts/enrich_images.py --store-root store --provider lmstudio --workers 4
 ```
 
+长图、窄截图或压缩严重的截图如果整图识别失败，可以打开切片 fallback。它会把高度超过阈值的图片按纵向切成小段，逐段识别后再合并回同一个 `image_id`：
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images
+```
+
+默认每段高度 `500px`，相邻段重叠 `60px`，每段提交模型前放大 `2x`。需要调整时：
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images --slice-height 500 --slice-overlap 60 --slice-upscale 2
+```
+
+如果确认某批长图整图识别一定效果差，可以直接跳过整图识别：
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --force-slice-long-images
+```
+
 Stage 2 每完成一张图片都会立即写入 `store/image.enriched.jsonl`。如果中途暂停或关闭，再次运行会跳过已成功记录，继续处理失败或未完成记录。
 
 ### 5. 生成给外部 LLM 读取的 chunks
@@ -299,8 +317,15 @@ Stage 1-4 是推荐主流程。Stage 5 是可选功能；如果你要用 OpenRou
 - `FLOMO_VLM_API_KEY`：可选
 - `FLOMO_VLM_TIMEOUT_SECONDS`：可选，默认 `60`
 - `FLOMO_VLM_MAX_TOKENS`：可选，默认 `4096`，限制单张图片的模型输出长度。密集截图或拍照笔记如果出现 JSON 截断错误，可以继续调大。
+- `FLOMO_VLM_SLICE_LONG_IMAGES`：可选，设为 `true` 时，长图整图识别失败后自动切片重试。
+- `FLOMO_VLM_FORCE_SLICE_LONG_IMAGES`：可选，设为 `true` 时，高度超过切片阈值的图片直接切片识别。
+- `FLOMO_VLM_SLICE_HEIGHT`：可选，默认 `500`，每个纵向切片的高度。
+- `FLOMO_VLM_SLICE_OVERLAP`：可选，默认 `60`，相邻切片的重叠高度，避免文字正好被切断。
+- `FLOMO_VLM_SLICE_UPSCALE`：可选，默认 `2`，每个切片提交模型前的放大倍数。
 
 图片增强失败不会中断整个流程。脚本会先完整跑一遍，再只重试失败项，最多重试 3 轮。每张图片完成后都会立刻保存；仍失败的图片会保留 `status=failed` 和失败原因。
+
+长图切片识别不会改变 JSONL 结构。成功后仍然只写原图片的一条记录，结果合并进 `ocr_text` 和 `visual_description`。
 
 默认不会覆盖已经成功的图片记录。需要重跑成功项时加：
 

@@ -4,9 +4,9 @@ import json
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-from flomo_pipeline.enrich.models import EnrichedImageRecord, EnrichStats
+from flomo_pipeline.enrich.models import EnrichedImageRecord, EnrichStats, EnrichStatus
 
 if TYPE_CHECKING:
     from flomo_pipeline.enrich.provider import EnrichmentProvider
@@ -58,7 +58,7 @@ def _record_from_dict(payload: dict[str, Any]) -> EnrichedImageRecord:
         model_name=str(payload["model_name"]),
         prompt_version=str(payload["prompt_version"]),
         run_id=str(payload["run_id"]),
-        status=str(payload["status"]),
+        status=cast("EnrichStatus", str(payload["status"])),
         error_message=payload.get("error_message"),
     )
 
