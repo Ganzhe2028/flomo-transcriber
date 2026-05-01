@@ -4,13 +4,15 @@ import contextlib
 import json
 import threading
 import time
-from collections.abc import Iterator
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 
 SAMPLE_HTML = """\
@@ -116,10 +118,8 @@ def run_fake_lmstudio_server(responses: list[FakeHTTPResponse]) -> Iterator[Fake
                 if isinstance(response.body, str)
                 else json.dumps(response.body, ensure_ascii=False)
             )
-            try:
+            with contextlib.suppress(BrokenPipeError):
                 self.wfile.write(body.encode("utf-8"))
-            except BrokenPipeError:
-                pass
 
         def log_message(self, format: str, *args: object) -> None:
             return

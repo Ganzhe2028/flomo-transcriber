@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from flomo_pipeline.enrich import EnrichedImageValidator, ImageEnrichmentRunner
 from flomo_pipeline.enrich.providers import build_provider
+from flomo_pipeline.enrich.retry_config import resolve_lmstudio_retry_model_name
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -62,7 +63,18 @@ def main() -> None:
     enriched_path = store_root / "image.enriched.jsonl"
 
     try:
-        provider = build_provider(args.provider)
+        base_provider = build_provider(args.provider)
+        provider = base_provider
+        if args.provider == "lmstudio":
+            resolution = resolve_lmstudio_retry_model_name(
+                base_model_name=base_provider.model_name,
+            )
+            if resolution.warning is not None:
+                print(f"Warning: {resolution.warning}", file=sys.stderr)
+            else:
+                provider = build_provider(args.provider, model_name=resolution.model_name)
+            print(f"vlm_model={base_provider.model_name}")
+            print(f"retry_vlm_model={provider.model_name}")
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)

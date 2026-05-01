@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from flomo_pipeline.chunk import ChunkBuildRunner, ChunkValidator
 from tests.conftest import write_jsonl
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _setup_chunk_monthly(tmp_path: Path) -> tuple[Path, Path]:
@@ -41,7 +44,9 @@ def _setup_chunk_monthly(tmp_path: Path) -> tuple[Path, Path]:
                         "image_id": "image-2-1",
                         "memo_id": "memo-2",
                         "relative_path": "store/images/2025/2025-12/image-2-1.jpg",
-                        "source_relpath": "2025/flomo@Example-20251201/file/2025-12-01/a/image-2-1.jpg",
+                        "source_relpath": (
+                            "2025/flomo@Example-20251201/file/2025-12-01/a/image-2-1.jpg"
+                        ),
                         "media_type": "image/jpeg",
                         "ocr_text": "OCR text",
                         "visual_description": "visual description",
@@ -55,7 +60,9 @@ def _setup_chunk_monthly(tmp_path: Path) -> tuple[Path, Path]:
                         "image_id": "image-2-2",
                         "memo_id": "memo-2",
                         "relative_path": "store/images/2025/2025-12/image-2-2.mov",
-                        "source_relpath": "2025/flomo@Example-20251201/file/2025-12-01/a/image-2-2.mov",
+                        "source_relpath": (
+                            "2025/flomo@Example-20251201/file/2025-12-01/a/image-2-2.mov"
+                        ),
                         "media_type": "video/quicktime",
                         "ocr_text": "",
                         "visual_description": "",
@@ -81,7 +88,9 @@ def _setup_chunk_monthly(tmp_path: Path) -> tuple[Path, Path]:
                         "image_id": "image-3-1",
                         "memo_id": "memo-3",
                         "relative_path": "store/images/2025/2025-12/image-3-1.jpg",
-                        "source_relpath": "2025/flomo@Example-20251201/file/2025-12-01/a/image-3-1.jpg",
+                        "source_relpath": (
+                            "2025/flomo@Example-20251201/file/2025-12-01/a/image-3-1.jpg"
+                        ),
                         "media_type": "image/jpeg",
                         "ocr_text": "",
                         "visual_description": "",
@@ -222,7 +231,9 @@ def test_chunk_validator_catches_duplicate_chunk_id_and_missing_memo(tmp_path: P
         overwrite=True,
     ).run()
 
-    bad_chunk = json.loads((chunks_root / "2026-01" / "2026-01-0001.json").read_text(encoding="utf-8"))
+    bad_chunk = json.loads(
+        (chunks_root / "2026-01" / "2026-01-0001.json").read_text(encoding="utf-8")
+    )
     bad_chunk["chunk_id"] = "2025-12-0001"
     bad_chunk["source_memo_ids"] = ["missing-memo"]
     bad_chunk["source_count"] = 1

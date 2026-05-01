@@ -5,7 +5,7 @@ import urllib.request
 from typing import TYPE_CHECKING
 
 from flomo_pipeline.enrich import ImageEnrichmentRunner
-from flomo_pipeline.enrich.providers import LMStudioEnrichmentProvider
+from flomo_pipeline.enrich.providers import LMStudioEnrichmentProvider, build_provider
 from tests.conftest import (
     FakeHTTPResponse,
     lmstudio_chat_response,
@@ -63,6 +63,12 @@ def test_lmstudio_provider_success_parses_fields_and_sends_image(tmp_path: Path)
     assert message_content[0]["type"] == "text"
     assert message_content[1]["type"] == "image_url"
     assert message_content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_build_provider_accepts_explicit_lmstudio_model_name() -> None:
+    provider = build_provider("lmstudio", model_name="retry-vlm")
+
+    assert provider.model_name == "retry-vlm"
 
 
 def test_lmstudio_provider_accepts_custom_max_tokens_and_reasoning_prefix(

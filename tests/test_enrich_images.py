@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from flomo_pipeline.enrich import EnrichedImageValidator, ImageEnrichmentRunner
 from flomo_pipeline.enrich.models import ProviderResult
 from flomo_pipeline.enrich.providers import MockEnrichmentProvider
 from tests.conftest import write_jsonl
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _setup_enrich_store(tmp_path: Path) -> Path:
@@ -154,9 +157,15 @@ class SequencedProvider:
     model_name = "sequenced-vlm"
     prompt_version = "sequenced-v1"
 
-    def __init__(self, results: list[ProviderResult]) -> None:
+    def __init__(
+        self,
+        results: list[ProviderResult],
+        *,
+        model_name: str = "sequenced-vlm",
+    ) -> None:
         self.results = results
         self.calls = 0
+        self.model_name = model_name
 
     def enrich(self, image_path: Path, *, image_id: str, memo_id: str) -> ProviderResult:
         self.calls += 1
@@ -210,7 +219,9 @@ def test_enrich_runner_handles_success_skipped_failed_and_stats(tmp_path: Path) 
 
     failed_record = by_id["flomo-example-20260304--0001--03"]
     assert failed_record.status == "failed"
-    assert failed_record.error_message == "Image file not found: store/images/2026/2026-03/missing-image.jpg"
+    assert failed_record.error_message == (
+        "Image file not found: store/images/2026/2026-03/missing-image.jpg"
+    )
 
     assert stats.total == 3
     assert stats.success == 1
@@ -389,6 +400,34 @@ def test_enrich_runner_retries_failed_records_after_initial_pass(tmp_path: Path)
     assert stats.retry_attempts == 2
     assert stats.retry_success == 1
     assert stats.retry_failed == 0
+
+
+def test_enrich_runner_uses_retry_provider_after_initial_failure(tmp_path: Path) -> None:
+    store_root = _setup_single_image_store(tmp_path)
+    provider = SequencedProvider(
+        [ProviderResult("", "", "failed", "first failure")],
+        model_name="regular-vlm",
+    )
+    retry_provider = SequencedProvider(
+        [ProviderResult("retried text", "", "success", None)],
+        model_name="retry-vlm",
+    )
+
+    records, stats = ImageEnrichmentRunner(
+        store_root=store_root,
+        provider=provider,
+        retry_provider=retry_provider,
+        project_root=tmp_path,
+        run_id="run-1",
+    ).run()
+
+    assert provider.calls == 1
+    assert retry_provider.calls == 1
+    assert records[0].status == "success"
+    assert records[0].model_name == "retry-vlm"
+    assert records[0].ocr_text == "retried text"
+    assert stats.retry_attempts == 1
+    assert stats.retry_success == 1
 
 
 def test_enrich_runner_stops_after_three_failed_retries(tmp_path: Path) -> None:

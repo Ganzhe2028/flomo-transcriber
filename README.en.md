@@ -50,11 +50,14 @@ Open `.env` and at least set your own vision model name:
 ```text
 FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
 FLOMO_VLM_MODEL=<your-vision-model-name>
+# Optional stronger vision model for failed-image retry.
+# FLOMO_VLM_RETRY_MODEL=<your-retry-vision-model-name>
 FLOMO_VLM_TIMEOUT_SECONDS=180
 FLOMO_VLM_MAX_TOKENS=4096
 ```
 
 The scripts do not choose a model automatically. They only read the model name from `.env` or the current environment.
+If `FLOMO_VLM_RETRY_MODEL` is set, failed-image retry uses that model. If it is not set, retry keeps using `FLOMO_VLM_MODEL` and prints a warning. The two model names cannot be identical.
 
 If you only want to test the flow without connecting to LM Studio, choose `mock` in the guide.
 
@@ -162,6 +165,7 @@ Stage 1-4 are the recommended main path. Stage 5 is optional. If you use an exte
 
 - `FLOMO_VLM_BASE_URL`: for example `http://127.0.0.1:1234/v1`
 - `FLOMO_VLM_MODEL`: local vision model name
+- `FLOMO_VLM_RETRY_MODEL`: optional failed-image retry model; falls back to `FLOMO_VLM_MODEL` when unset
 - `FLOMO_VLM_API_KEY`: optional
 - `FLOMO_VLM_TIMEOUT_SECONDS`: optional, default `60`
 - `FLOMO_VLM_MAX_TOKENS`: optional, default `4096`
@@ -176,6 +180,8 @@ If the probe returns `connection refused` or `WinError 10061`, the script could 
 - LM Studio's OpenAI-compatible server is running.
 - `FLOMO_VLM_BASE_URL` matches the host and port shown by LM Studio.
 - The vision model is loaded in LM Studio, and `FLOMO_VLM_MODEL` matches the model name.
+
+`FLOMO_VLM_RETRY_MODEL` is intended for a larger, stronger, slower vision model. When retry succeeds, `model_name` in `store/image.enriched.jsonl` records the actual retry model.
 
 ### Single-Stage Commands
 

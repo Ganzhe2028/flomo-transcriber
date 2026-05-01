@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from flomo_pipeline.extract import FlomoParser, StoreValidator, StoreWriter
 from flomo_pipeline.extract.validator import Rule
 from tests.conftest import write_jsonl
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_validator_passes_generated_store(sample_raw_root: Path, tmp_path: Path) -> None:
@@ -23,7 +26,11 @@ def test_validator_catches_image_count_mismatch(sample_raw_root: Path, tmp_path:
     StoreWriter(store_root=store_root).write(result, raw_root=sample_raw_root)
 
     memo_path = store_root / "memo.raw.jsonl"
-    records = [json.loads(line) for line in memo_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    records = [
+        json.loads(line)
+        for line in memo_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     records[1]["image_count"] = 99
     write_jsonl(memo_path, records)
 
@@ -39,7 +46,9 @@ def test_validator_catches_existing_missing_source(sample_raw_root: Path, tmp_pa
 
     missing_path = store_root / "missing_image.raw.jsonl"
     records = [
-        json.loads(line) for line in missing_path.read_text(encoding="utf-8").splitlines() if line.strip()
+        json.loads(line)
+        for line in missing_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
     ]
     existing_source = "2026/flomo@ExampleUser-20260304/file/2026-03-02/abc123/photo.png"
     records[0]["source_relpath"] = existing_source

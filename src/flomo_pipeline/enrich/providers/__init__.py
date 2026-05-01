@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 def build_provider(
     name: str,
     *,
+    model_name: str | None = None,
     slice_long_images: bool | None = None,
     force_slice_long_images: bool | None = None,
     slice_height: int | None = None,
@@ -22,6 +23,7 @@ def build_provider(
         return MockEnrichmentProvider()
     if name == "lmstudio":
         return LMStudioEnrichmentProvider(
+            model_name=model_name,
             slice_long_images=slice_long_images,
             force_slice_long_images=force_slice_long_images,
             slice_height=slice_height,

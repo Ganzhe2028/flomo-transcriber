@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
 PLACEHOLDER_VALUES = {
     "",
     "<your-vision-model-name>",
@@ -92,7 +94,7 @@ def _with_month(command: list[str], month: str | None) -> list[str]:
     return [*command, "--month", month]
 
 
-def _require_vlm_config() -> None:
+def _require_vlm_config(*, include_retry: bool = False) -> None:
     missing: list[str] = []
     if not os.getenv("FLOMO_VLM_BASE_URL", "").strip():
         missing.append("FLOMO_VLM_BASE_URL")
@@ -109,6 +111,19 @@ def _require_vlm_config() -> None:
             file=sys.stderr,
         )
         raise SystemExit(2)
+
+    print(f"vlm_model={model}")
+    if include_retry:
+        from flomo_pipeline.enrich.retry_config import resolve_lmstudio_retry_model_name
+
+        try:
+            resolution = resolve_lmstudio_retry_model_name(base_model_name=model)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            raise SystemExit(2) from exc
+        if resolution.warning is not None:
+            print(f"Warning: {resolution.warning}", file=sys.stderr)
+        print(f"retry_vlm_model={resolution.model_name or model}")
 
 
 def _prompt_action() -> str | None:
@@ -168,7 +183,7 @@ def _build_chunks_from_raw(
     workers: int,
 ) -> None:
     if provider == "lmstudio":
-        _require_vlm_config()
+        _require_vlm_config(include_retry=True)
 
     python = _python_executable()
     raw = str(raw_root)
@@ -282,7 +297,7 @@ def _retry_failed_images(
     workers: int,
 ) -> None:
     if provider == "lmstudio":
-        _require_vlm_config()
+        _require_vlm_config(include_retry=True)
 
     command = [
         _python_executable(),

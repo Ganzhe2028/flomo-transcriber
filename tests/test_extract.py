@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from conftest import SAMPLE_HTML
 
 from flomo_pipeline.extract import FlomoParser, StoreWriter
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_parse_all_returns_stage1_records(sample_raw_root: Path, tmp_path: Path) -> None:
@@ -63,7 +66,10 @@ def test_parse_all_accepts_nested_flomo_export_wrapper(tmp_path: Path) -> None:
     )
 
 
-def test_writer_writes_stage1_filenames_and_copies_images(sample_raw_root: Path, tmp_path: Path) -> None:
+def test_writer_writes_stage1_filenames_and_copies_images(
+    sample_raw_root: Path,
+    tmp_path: Path,
+) -> None:
     store_root = tmp_path / "store"
     result = FlomoParser(raw_root=sample_raw_root, store_root=store_root).parse_all()
     StoreWriter(store_root=store_root).write(result, raw_root=sample_raw_root)

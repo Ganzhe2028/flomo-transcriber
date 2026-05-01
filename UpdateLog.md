@@ -15,14 +15,17 @@
 - 新增跨平台引导脚本 `scripts/guide.py`，普通用户可以通过菜单完成首次生成、日常更新、单图探测和失败图片重试。
 - 引导脚本会读取 `.env` 中的 LM Studio 配置；模型名缺失或仍是示例占位值时会直接停止并提示修正。
 - Windows 直接执行 `scripts\guide.py` 时，如果当前 shell 已激活 `.venv`，引导脚本会用虚拟环境里的 Python 调用后续 stage 脚本。
+- 新增 `FLOMO_VLM_RETRY_MODEL`，失败图片 retry 可以切换到更强的 LM Studio 视觉模型；未配置时沿用 `FLOMO_VLM_MODEL` 并提示，配置成相同模型时直接停止。
+- Stage 2 内置 retry 和 `retry_failed_images.py` 都会记录实际 retry 模型名到 `store/image.enriched.jsonl` 的 `model_name`。
 - 引导脚本复用现有 Stage 1-4 和失败重试脚本，不改变 JSONL schema、目录结构或下游产物。
 - 重写中英文 README 的使用入口，区分“第一次使用”和“日常使用”，并把单阶段命令、长图切片、手动写回和本地 report 移到高级用法。
-- 扩展 CLI 测试，覆盖 `.env` 加载、mock provider 生成 chunks、缺少 LM Studio 配置时停止、以及引导脚本重试失败图片。
+- 扩展测试，覆盖 `.env` 加载、mock provider 生成 chunks、缺少 LM Studio 配置时停止、retry 专用模型生效、retry 模型缺失时 fallback、retry 模型与普通模型相同时停止。
+- 清理测试文件中已有 Ruff 格式项，让计划中的 `tests` 范围 Ruff 检查可以通过。
 
 ### 验证结果
 
-- `python -m ruff check scripts\guide.py tests\test_cli.py` 通过。
-- `python -m pytest` 通过：62 passed。
+- `python -m ruff check scripts\enrich_images.py scripts\retry_failed_images.py scripts\guide.py tests src\flomo_pipeline\enrich\runner.py src\flomo_pipeline\enrich\retry_config.py src\flomo_pipeline\enrich\providers\__init__.py` 通过。
+- `python -m pytest` 通过：67 passed。
 - `python -m mypy src` 通过。
 - `python scripts\check_open_source_readiness.py` 通过；本地 `raw/`、`store/`、`monthly/`、`llm_chunks/` 中仍有被忽略的私人数据，不能直接打包工作树发布。
 

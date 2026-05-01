@@ -63,6 +63,7 @@ class ImageEnrichmentRunner:
         *,
         store_root: Path,
         provider: EnrichmentProvider,
+        retry_provider: EnrichmentProvider | None = None,
         month: str | None = None,
         overwrite: bool = False,
         run_id: str | None = None,
@@ -75,6 +76,7 @@ class ImageEnrichmentRunner:
             raise ValueError("workers must be positive")
         self.store_root = store_root
         self.provider = provider
+        self.retry_provider = retry_provider or provider
         self.month = month
         self.overwrite = overwrite
         self.run_id = run_id or uuid.uuid4().hex
@@ -370,7 +372,11 @@ class ImageEnrichmentRunner:
             for retry_index, (position, failed_record) in enumerate(failed_positions, start=1):
                 image_record = target_images_by_id[failed_record.image_id]
                 memo_record = memos_by_id.get(str(image_record["memo_id"]))
-                retried_record = self._enrich_one(image_record, memo_record)
+                retried_record = self._enrich_one(
+                    image_record,
+                    memo_record,
+                    provider=self.retry_provider,
+                )
                 processed_records[position] = retried_record
                 stats.retry_attempts += 1
                 self._persist_progress(
@@ -413,7 +419,10 @@ class ImageEnrichmentRunner:
         self,
         image_record: dict[str, Any],
         memo_record: dict[str, Any] | None,
+        *,
+        provider: EnrichmentProvider | None = None,
     ) -> EnrichedImageRecord:
+        active_provider = provider or self.provider
         image_id = str(image_record["image_id"])
         memo_id = str(image_record["memo_id"])
         relative_path = str(image_record["image_relpath"])
@@ -430,8 +439,8 @@ class ImageEnrichmentRunner:
             "relative_path": relative_path,
             "source_relpath": source_relpath,
             "media_type": media_type,
-            "model_name": self.provider.model_name,
-            "prompt_version": self.provider.prompt_version,
+            "model_name": active_provider.model_name,
+            "prompt_version": active_provider.prompt_version,
             "run_id": self.run_id,
         }
 
@@ -455,7 +464,7 @@ class ImageEnrichmentRunner:
             )
 
         try:
-            provider_result = self.provider.enrich(
+            provider_result = active_provider.enrich(
                 absolute_path,
                 image_id=image_id,
                 memo_id=memo_id,

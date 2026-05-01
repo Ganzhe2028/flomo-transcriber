@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from flomo_pipeline.merge import MonthlyMergeRunner, MonthlyValidator
 from tests.conftest import write_jsonl
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _setup_merge_store(tmp_path: Path) -> tuple[Path, Path]:
@@ -156,7 +159,11 @@ def test_monthly_validator_catches_month_mismatch(tmp_path: Path) -> None:
     MonthlyMergeRunner(store_root=store_root, monthly_root=monthly_root).run()
 
     december_path = monthly_root / "2025-12.enriched.jsonl"
-    records = [json.loads(line) for line in december_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    records = [
+        json.loads(line)
+        for line in december_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     records[0]["month"] = "2026-01"
     write_jsonl(december_path, records)
 

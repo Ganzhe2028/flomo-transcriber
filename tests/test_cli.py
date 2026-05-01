@@ -179,6 +179,7 @@ def test_enrich_lmstudio_script_happy_path(tmp_path: Path) -> None:
         )
 
     assert enrich.returncode == 0, enrich.stdout + enrich.stderr
+    assert "Warning: FLOMO_VLM_RETRY_MODEL is not set" in enrich.stderr
     assert "Success:" in enrich.stdout
     assert (store_root / "image.enriched.jsonl").exists()
     assert len(server.requests) == 2
@@ -239,6 +240,7 @@ def test_enrich_lmstudio_script_retries_failed_records(tmp_path: Path) -> None:
         env = os.environ.copy()
         env["FLOMO_VLM_BASE_URL"] = server.url
         env["FLOMO_VLM_MODEL"] = "local-vlm"
+        env["FLOMO_VLM_RETRY_MODEL"] = "retry-vlm"
         env["FLOMO_VLM_TIMEOUT_SECONDS"] = "2"
 
         enrich = subprocess.run(
@@ -260,6 +262,11 @@ def test_enrich_lmstudio_script_retries_failed_records(tmp_path: Path) -> None:
     assert "Retry attempts: 1" in enrich.stdout
     assert "Retry success: 1" in enrich.stdout
     assert len(server.requests) == 3
+    assert [request["model"] for request in server.requests] == [
+        "local-vlm",
+        "local-vlm",
+        "retry-vlm",
+    ]
 
     records = [
         json.loads(line)
@@ -267,6 +274,7 @@ def test_enrich_lmstudio_script_retries_failed_records(tmp_path: Path) -> None:
         if line.strip()
     ]
     assert {record["status"] for record in records} == {"success"}
+    assert {record["model_name"] for record in records} == {"local-vlm", "retry-vlm"}
 
 
 def test_retry_failed_images_script_reprocesses_failed_only(tmp_path: Path) -> None:
@@ -352,6 +360,105 @@ def test_retry_failed_images_script_reprocesses_failed_only(tmp_path: Path) -> N
     assert len(records) == 1
     assert records[0]["status"] == "success"
     assert records[0]["image_id"] == image_record["image_id"]
+
+
+def test_retry_failed_images_script_uses_retry_lmstudio_model(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    raw_root = build_sample_raw(tmp_path / "raw")
+    store_root = tmp_path / "store"
+
+    extract = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "extract_raw.py"),
+            "--raw-root",
+            str(raw_root),
+            "--store-root",
+            str(store_root),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert extract.returncode == 0, extract.stderr
+
+    image_record = json.loads(
+        (store_root / "image.raw.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    memo_records = [
+        json.loads(line)
+        for line in (store_root / "memo.raw.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    memo_record = {record["memo_id"]: record for record in memo_records}[image_record["memo_id"]]
+    (store_root / "image.enriched.jsonl").write_text(
+        json.dumps(
+            {
+                "image_id": image_record["image_id"],
+                "memo_id": image_record["memo_id"],
+                "created_at": memo_record["created_at"],
+                "month": memo_record["created_at"][:7],
+                "relative_path": image_record["image_relpath"],
+                "source_relpath": image_record["source_relpath"],
+                "media_type": "image/png",
+                "ocr_text": "",
+                "visual_description": "",
+                "model_name": "old-vlm",
+                "prompt_version": "old-v1",
+                "run_id": "old-run",
+                "status": "failed",
+                "error_message": "temporary failure",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with run_fake_lmstudio_server(
+        [
+            FakeHTTPResponse(
+                status=200,
+                body=lmstudio_chat_response(
+                    '{"ocr_text":"retried text","visual_description":""}'
+                ),
+            )
+        ]
+    ) as server:
+        env = os.environ.copy()
+        env["FLOMO_VLM_BASE_URL"] = server.url
+        env["FLOMO_VLM_MODEL"] = "regular-vlm"
+        env["FLOMO_VLM_RETRY_MODEL"] = "retry-vlm"
+        env["FLOMO_VLM_TIMEOUT_SECONDS"] = "2"
+
+        retry = subprocess.run(
+            [
+                sys.executable,
+                str(repo_root / "scripts" / "retry_failed_images.py"),
+                "--store-root",
+                str(store_root),
+                "--provider",
+                "lmstudio",
+                "--rounds",
+                "1",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+    assert retry.returncode == 0, retry.stdout + retry.stderr
+    assert "retry_vlm_model=retry-vlm" in retry.stdout
+    assert server.requests[0]["model"] == "retry-vlm"
+
+    records = [
+        json.loads(line)
+        for line in (store_root / "image.enriched.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert records[0]["status"] == "success"
+    assert records[0]["model_name"] == "retry-vlm"
 
 
 def test_probe_lmstudio_script_happy_path(tmp_path: Path) -> None:
@@ -855,6 +962,37 @@ def test_guide_script_stops_when_lmstudio_config_is_missing(tmp_path: Path) -> N
     assert guide.returncode == 2
     assert "Missing LM Studio configuration" in guide.stderr
     assert not (store_root / "memo.raw.jsonl").exists()
+
+
+def test_guide_script_stops_when_retry_model_matches_base(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    env = os.environ.copy()
+    env["FLOMO_VLM_BASE_URL"] = "http://127.0.0.1:1234/v1"
+    env["FLOMO_VLM_MODEL"] = "same-vlm"
+    env["FLOMO_VLM_RETRY_MODEL"] = "same-vlm"
+
+    guide = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "guide.py"),
+            "--action",
+            "retry",
+            "--provider",
+            "lmstudio",
+            "--env-file",
+            str(tmp_path / ".env"),
+            "--store-root",
+            str(tmp_path / "store"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=repo_root,
+        env=env,
+    )
+
+    assert guide.returncode == 2
+    assert "FLOMO_VLM_RETRY_MODEL must be different from FLOMO_VLM_MODEL" in guide.stderr
 
 
 def test_guide_script_retry_action_uses_retry_flow(tmp_path: Path) -> None:

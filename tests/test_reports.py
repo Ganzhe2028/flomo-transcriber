@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from flomo_pipeline.report import ReportBuildRunner, ReportValidator
 from flomo_pipeline.report.models import ReportProviderResult
 from flomo_pipeline.report.providers import MockReportProvider
 from flomo_pipeline.report.providers.lmstudio_openai import LMStudioReportProvider
 from tests.conftest import FakeHTTPResponse, lmstudio_chat_response, run_fake_lmstudio_server
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _write_json(path: Path, payload: dict) -> None:
