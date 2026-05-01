@@ -5,32 +5,25 @@
 把你的 Flomo 记忆库变成 **LLM 友好**的资料包。
 
 > [!NOTE]
-> 亲测自己的flomo导出包：缩减至原大小的约 **0.059%**，即减少了约 **99.94%**。
+> 亲测自己的 Flomo 导出包：缩减至原大小的约 **0.059%**，即减少了约 **99.94%**。
 
-很多人把几千条 Flomo 记成了自己的长期记忆，但导出后很难直接交给模型处理：文字分散，图片没人读，月份不好拆，来源也不好追。`flomo-transcriber` 解决的就是这件事。
+很多人把几千条 Flomo 记成了自己的长期记忆，但导出后很难直接交给模型处理：文字分散，图片没人读，月份不好拆，来源也不好追。`flomo-transcriber` 会把本地 Flomo 导出整理成干净、可检查、可重复生成的文件。
 
-它会把本地 Flomo 导出内容整理成干净、可检查、可重复生成的数据。memo 原文会保留，图片里的文字和画面信息也可以转成文本，最后生成外部 LLM 可以直接读取的 chunk 文件。
+它会保留 memo 原文，也可以用本地 LM Studio 视觉模型把图片里的文字和画面信息转成文本，最后生成外部 LLM 可以直接读取的 chunk 文件：
 
-它做的事很具体：
+```text
+llm_chunks/YYYY-MM/*.json
+```
 
-1. 从 Flomo HTML 导出里提取 memo 和图片。
-2. 把结果保存成稳定的 JSONL 文件。
-3. 可选：用本地 LM Studio 视觉模型读取图片里的文字和画面信息。
-4. 按月份合并 memo 和图片描述。
-5. 生成 `llm_chunks/YYYY-MM/*.json`，给 OpenRouter、ChatGPT、Claude 或其他外部模型读取。
-6. 可选：用本地文本模型生成月度报告。
-
-它不是一个 Web 应用，也不需要数据库。所有输入输出都是本地文件。
+它不是 Web 应用，不需要数据库。所有输入输出都是本地文件。
 
 ## 你应该从哪里开始
 
-不同身份看不同部分：
-
-- 只是想把 Flomo 数据整理给 LLM 用：看 [使用者：最短流程](#使用者最短流程)。
+- 只是想把 Flomo 数据整理给 LLM 用：看 [第一次使用](#第一次使用) 和 [日常使用](#日常使用)。
+- 需要排错、处理长截图、单独跑某个阶段：看 [高级用法和排错](#高级用法和排错)。
 - 想改代码、跑测试、维护项目：看 [开发者：项目结构和测试](#开发者项目结构和测试)。
-- 让 AI Agent 接手继续开发：看 [Agent：边界和契约](#agent边界和契约)。
 
-## 使用者：最短流程
+## 第一次使用
 
 ### 1. 安装
 
@@ -38,7 +31,34 @@
 pip install -e .[dev]
 ```
 
-### 2. 放入 Flomo 导出
+### 2. 准备配置
+
+Windows：
+
+```bat
+copy .env.example .env
+```
+
+macOS / Linux：
+
+```bash
+cp .env.example .env
+```
+
+打开 `.env`，至少改成你自己的视觉模型名：
+
+```text
+FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
+FLOMO_VLM_MODEL=<你的视觉模型名>
+FLOMO_VLM_TIMEOUT_SECONDS=180
+FLOMO_VLM_MAX_TOKENS=4096
+```
+
+脚本不会自动选择模型，只读取 `.env` 或当前环境变量里的模型名。
+
+如果只是测试流程，不想连接 LM Studio，后面在引导脚本里选择 `mock`。
+
+### 3. 放入 Flomo 导出
 
 把 Flomo 的 HTML 导出内容放到：
 
@@ -50,209 +70,56 @@ raw/
 
 这个仓库不会自带你的真实 Flomo 数据。`raw/`、`store/`、`monthly/`、`llm_chunks/`、`reports/` 默认都被 `.gitignore` 保护，避免误传到 GitHub。
 
-### 3. 生成 raw 数据层
+### 4. 运行引导脚本
 
 ```bash
-python scripts/extract_raw.py --raw-root raw --store-root store
-python scripts/validate_store.py --store-root store
+python scripts/guide.py
 ```
 
-成功后会得到：
+第一次运行选择：
 
 ```text
-store/memo.raw.jsonl
-store/image.raw.jsonl
-store/missing_image.raw.jsonl
-store/images/
+1. First run: build LLM chunks from raw/
 ```
 
-### 4. 让图片进入可读文本
+按提示选择月份和图片处理方式：
 
-如果你只是测试流程，不想调用真实模型：
+- `lmstudio`：用 LM Studio 读取真实图片内容。
+- `mock`：只测试流程，不调用模型。
 
-```bash
-python scripts/enrich_images.py --store-root store --provider mock
-python scripts/validate_enriched_images.py --store-root store
-```
-
-如果你要用 LM Studio 读取真实图片内容，先启动 LM Studio 的 OpenAI-compatible server，然后设置：
-
-```bash
-$env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
-$env:FLOMO_VLM_MODEL="<你的视觉模型名>"
-$env:FLOMO_VLM_TIMEOUT_SECONDS="180"
-$env:FLOMO_VLM_MAX_TOKENS="4096"
-```
-
-e.g.
-
-```bash
-$env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
-$env:FLOMO_VLM_MODEL="google/gemma-4-e2b"
-$env:FLOMO_VLM_TIMEOUT_SECONDS="720"
-$env:FLOMO_VLM_MAX_TOKENS="4096"
-d:\New\flomo-transcriber\scripts\30_stage2_4_prepare_context.bat
-```
-
-先探测一张图片：
-
-```bash
-python scripts/probe_lmstudio_vlm.py --image store/images/2025/2025-12/example.png
-```
-
-如果探测返回 `connection refused` 或 `WinError 10061`，表示脚本没有连上 LM Studio 服务，不是图片解析失败。检查：
-
-- LM Studio 的 OpenAI-compatible server 已经启动。
-- `FLOMO_VLM_BASE_URL` 的 host/port 和 LM Studio 显示的一致，常见值是 `http://127.0.0.1:1234/v1`。
-- 视觉模型已在 LM Studio 中加载，`FLOMO_VLM_MODEL` 与模型名一致。
-
-探测成功后再跑整月：
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12
-python scripts/validate_enriched_images.py --store-root store
-```
-
-`--month 2025-12` 不是必须的。不加 `--month` 会处理全部月份：
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio
-```
-
-如果本地模型服务允许并发，可以加 `--workers` 并行处理图片，例如：
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio --workers 4
-```
-
-长图、窄截图或压缩严重的截图如果整图识别失败，可以打开切片 fallback。它会把高度超过阈值的图片按纵向切成小段，逐段识别后再合并回同一个 `image_id`：
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images
-```
-
-默认每段高度 `500px`，相邻段重叠 `60px`，每段提交模型前放大 `2x`。需要调整时：
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images --slice-height 500 --slice-overlap 60 --slice-upscale 2
-```
-
-如果确认某批长图整图识别一定效果差，可以直接跳过整图识别：
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --force-slice-long-images
-```
-
-Stage 2 每完成一张图片都会立即写入 `store/image.enriched.jsonl`。如果中途暂停或关闭，再次运行会跳过已成功记录，继续处理失败或未完成记录。
-
-### 5. 生成给外部 LLM 读取的 chunks
-
-```bash
-python scripts/merge_monthly.py --store-root store --monthly-root monthly
-python scripts/validate_monthly.py --store-root store --monthly-root monthly
-python scripts/build_chunks.py --monthly-root monthly --chunks-root llm_chunks --overwrite
-python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunks
-```
-
-最终给外部模型读取的是：
+完成后，给外部 LLM 读取的文件在：
 
 ```text
 llm_chunks/YYYY-MM/*.json
 ```
 
-如果你只处理某个月：
+## 日常使用
+
+配置完成后，平时只需要继续运行：
 
 ```bash
-python scripts/merge_monthly.py --store-root store --monthly-root monthly --month 2025-12
-python scripts/validate_monthly.py --store-root store --monthly-root monthly --month 2025-12
-python scripts/build_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-12 --overwrite
-python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-12 --summary
+python scripts/guide.py
 ```
 
-## 常用脚本
+常用选择：
 
-### macOS / Linux
+| 选项 | 什么时候用 | 结果 |
+| --- | --- | --- |
+| `1. First run` | 第一次从 `raw/` 生成 chunks | 生成 `llm_chunks/YYYY-MM/*.json` |
+| `2. Daily update` | 更新了 `raw/`，想重新生成 chunks | 跳过已成功图片，补齐新内容 |
+| `3. Probe one image` | 不确定 LM Studio 是否能读图 | 单独测试一张图片 |
+| `4. Retry failed image records` | 有图片识别失败 | 只重试失败图片 |
 
-模型参与的 Stage 2：
+如果只想处理某个月，按提示输入 `2025-12` 这样的月份；直接回车会处理全部月份。
+
+也可以不用菜单，直接运行：
 
 ```bash
-$env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
-$env:FLOMO_VLM_MODEL="<你的视觉模型名>"
-$env:FLOMO_VLM_TIMEOUT_SECONDS="180"
-$env:FLOMO_VLM_MAX_TOKENS="4096"
-
-scripts/00_probe_lmstudio_image.sh store/images/2025/2025-12/example.png
-scripts/10_stage2_enrich_lmstudio.sh 2025-12
+python scripts/guide.py --action first --provider lmstudio --month 2025-12
+python scripts/guide.py --action daily --provider lmstudio --month 2025-12
+python scripts/guide.py --action retry --provider lmstudio --month 2025-12
+python scripts/guide.py --action probe --image store/images/2025/2025-12/example.png
 ```
-
-纯本地 Stage 3-4：
-
-```bash
-scripts/20_stage3_4_build_context.sh 2025-12
-```
-
-不传月份时会处理全部月份：
-
-```bash
-scripts/10_stage2_enrich_lmstudio.sh
-scripts/20_stage3_4_build_context.sh
-```
-
-### Windows
-
-在 PowerShell 里先设置 LM Studio 环境变量：
-
-```powershell
-$env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
-$env:FLOMO_VLM_MODEL="<你的视觉模型名>"
-$env:FLOMO_VLM_TIMEOUT_SECONDS="180"
-$env:FLOMO_VLM_MAX_TOKENS="4096"
-```
-
-在 CMD 里使用：
-
-```bat
-set FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
-set FLOMO_VLM_MODEL=<你的视觉模型名>
-set FLOMO_VLM_TIMEOUT_SECONDS=180
-set FLOMO_VLM_MAX_TOKENS=4096
-```
-
-Windows 脚本不会自动选择模型，只读取当前环境里的 `FLOMO_VLM_MODEL`。如果没有设置会直接停止；启动时会打印 `vlm_model=...` 方便确认。
-
-单图探测：
-
-```bat
-scripts\00_probe_lmstudio_image.bat store\images\2025\2025-12\example.png
-```
-
-模型参与的 Stage 2：
-
-```bat
-scripts\10_stage2_enrich_lmstudio.bat 2025-12
-```
-
-纯本地 Stage 3-4：
-
-```bat
-scripts\20_stage3_4_build_context.bat 2025-12
-```
-
-从 `raw/` 到 Stage 4 一次跑完：
-
-```bat
-scripts\30_stage2_4_prepare_context.bat 2025-12
-```
-
-这个脚本会先重新生成并校验 `store/*.raw.jsonl`，所以更新 `raw/` 后可以直接重跑它。不传 `2025-12` 就会处理全部月份。
-
-只重试失败图片：
-
-```bat
-scripts\40_retry_failed_images_lmstudio.bat 2025-12
-```
-
-这个脚本默认循环 3 轮，只处理 `status=failed` 的图片。已成功的图片不会重跑；不传 `2025-12` 就会处理全部月份。
 
 ## 目录和输出
 
@@ -273,7 +140,7 @@ tests/        测试
 llm_chunks/YYYY-MM/*.json
 ```
 
-如果你准备用 OpenRouter 跑最终总结，通常只需要把这个目录交给外部模型。
+如果你准备用 OpenRouter、ChatGPT、Claude 或其他外部模型做最终总结，通常只需要把这个目录交给外部模型。
 
 ## 每个 Stage 做什么
 
@@ -285,9 +152,107 @@ llm_chunks/YYYY-MM/*.json
 | Stage 4 chunk | `monthly/YYYY-MM.enriched.jsonl` | `llm_chunks/YYYY-MM/*.json` | 生成 LLM 可读的分块上下文 |
 | Stage 5 report | `llm_chunks/YYYY-MM/*.json` | `reports/YYYY-MM.report.md`, `reports/YYYY-MM.report.json` | 可选：生成本地月度报告 |
 
-Stage 1-4 是推荐主流程。Stage 5 是可选功能；如果你要用 OpenRouter 生成最终报告，可以只用 Stage 1-4。
+Stage 1-4 是推荐主流程。Stage 5 是可选功能；如果你要用外部模型生成最终报告，可以只用 Stage 1-4。
 
-## Stage 2 图片增强说明
+## 高级用法和排错
+
+### LM Studio 配置
+
+`lmstudio` 读取这些环境变量：
+
+- `FLOMO_VLM_BASE_URL`：例如 `http://127.0.0.1:1234/v1`
+- `FLOMO_VLM_MODEL`：本地视觉模型名
+- `FLOMO_VLM_API_KEY`：可选
+- `FLOMO_VLM_TIMEOUT_SECONDS`：可选，默认 `60`
+- `FLOMO_VLM_MAX_TOKENS`：可选，默认 `4096`
+- `FLOMO_VLM_SLICE_LONG_IMAGES`：可选，设为 `true` 时，长图整图识别失败后自动切片重试
+- `FLOMO_VLM_FORCE_SLICE_LONG_IMAGES`：可选，设为 `true` 时，高度超过切片阈值的图片直接切片识别
+- `FLOMO_VLM_SLICE_HEIGHT`：可选，默认 `500`
+- `FLOMO_VLM_SLICE_OVERLAP`：可选，默认 `60`
+- `FLOMO_VLM_SLICE_UPSCALE`：可选，默认 `2`
+
+如果探测返回 `connection refused` 或 `WinError 10061`，表示脚本没有连上 LM Studio 服务。检查：
+
+- LM Studio 的 OpenAI-compatible server 已经启动。
+- `FLOMO_VLM_BASE_URL` 的 host/port 和 LM Studio 显示的一致。
+- 视觉模型已在 LM Studio 中加载，`FLOMO_VLM_MODEL` 与模型名一致。
+
+### 单阶段命令
+
+一般用户优先用 `python scripts/guide.py`。下面这些命令适合排错或只重跑某个阶段。
+
+生成 raw 数据层：
+
+```bash
+python scripts/extract_raw.py --raw-root raw --store-root store
+python scripts/validate_store.py --raw-root raw --store-root store --summary
+```
+
+读取图片：
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12
+python scripts/validate_enriched_images.py --store-root store --summary
+```
+
+生成 chunks：
+
+```bash
+python scripts/merge_monthly.py --store-root store --monthly-root monthly --month 2025-12
+python scripts/validate_monthly.py --store-root store --monthly-root monthly --month 2025-12 --summary
+python scripts/build_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-12 --overwrite
+python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-12 --summary
+```
+
+### 平台脚本
+
+这些脚本仍然保留，适合已经熟悉流程的人使用。
+
+macOS / Linux：
+
+```bash
+scripts/00_probe_lmstudio_image.sh store/images/2025/2025-12/example.png
+scripts/10_stage2_enrich_lmstudio.sh 2025-12
+scripts/20_stage3_4_build_context.sh 2025-12
+```
+
+Windows：
+
+```bat
+scripts\00_probe_lmstudio_image.bat store\images\2025\2025-12\example.png
+scripts\10_stage2_enrich_lmstudio.bat 2025-12
+scripts\20_stage3_4_build_context.bat 2025-12
+scripts\30_stage2_4_prepare_context.bat 2025-12
+scripts\40_retry_failed_images_lmstudio.bat 2025-12
+```
+
+### 长图和截图
+
+如果长截图、窄截图或压缩严重的截图整图识别失败，可以打开切片 fallback：
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images
+```
+
+默认每段高度 `500px`，相邻段重叠 `60px`，每段提交模型前放大 `2x`。需要调整时：
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images --slice-height 500 --slice-overlap 60 --slice-upscale 2
+```
+
+如果确认某批长图整图识别一定效果差，可以直接跳过整图识别：
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --force-slice-long-images
+```
+
+如果本地模型服务允许并发，可以加 `--workers`：
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --workers 4
+```
+
+### 图片增强说明
 
 当前只处理静态图片：
 
@@ -304,29 +269,9 @@ Stage 1-4 是推荐主流程。Stage 5 是可选功能；如果你要用 OpenRou
 
 图片描述会覆盖照片、物体、场景、图表、界面布局、diagram 和 screenshot 等可见非文字内容。密集截图或拍照笔记会保留关键文字，不会追求完整逐字 OCR。
 
-支持的 provider：
+图片增强失败不会中断整个流程。每张图片完成后都会立刻保存；仍失败的图片会保留 `status=failed` 和失败原因。再次运行会跳过已成功记录，继续处理失败或未完成记录。
 
-- `mock`：测试流程用，不调用模型。
-- `lmstudio`：调用 LM Studio 的 OpenAI-compatible `/chat/completions` 接口。
-
-`lmstudio` 读取这些环境变量：
-
-- `FLOMO_VLM_BASE_URL`：例如 `http://127.0.0.1:1234/v1`
-- `FLOMO_VLM_MODEL`：本地视觉模型名
-- `FLOMO_VLM_API_KEY`：可选
-- `FLOMO_VLM_TIMEOUT_SECONDS`：可选，默认 `60`
-- `FLOMO_VLM_MAX_TOKENS`：可选，默认 `4096`，限制单张图片的模型输出长度。密集截图或拍照笔记如果出现 JSON 截断错误，可以继续调大。
-- `FLOMO_VLM_SLICE_LONG_IMAGES`：可选，设为 `true` 时，长图整图识别失败后自动切片重试。
-- `FLOMO_VLM_FORCE_SLICE_LONG_IMAGES`：可选，设为 `true` 时，高度超过切片阈值的图片直接切片识别。
-- `FLOMO_VLM_SLICE_HEIGHT`：可选，默认 `500`，每个纵向切片的高度。
-- `FLOMO_VLM_SLICE_OVERLAP`：可选，默认 `60`，相邻切片的重叠高度，避免文字正好被切断。
-- `FLOMO_VLM_SLICE_UPSCALE`：可选，默认 `2`，每个切片提交模型前的放大倍数。
-
-图片增强失败不会中断整个流程。脚本会先完整跑一遍，再只重试失败项，最多重试 3 轮。每张图片完成后都会立刻保存；仍失败的图片会保留 `status=failed` 和失败原因。
-
-长图切片识别不会改变 JSONL 结构。成功后仍然只写原图片的一条记录，结果合并进 `ocr_text` 和 `visual_description`。
-
-默认不会覆盖已经成功的图片记录。需要重跑成功项时加：
+需要重跑成功项时加：
 
 ```bash
 python scripts/enrich_images.py --store-root store --provider lmstudio --overwrite
@@ -355,6 +300,24 @@ python scripts/build_chunks.py --monthly-root monthly --chunks-root llm_chunks -
 python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-04
 ```
 
+### 可选：生成本地 report
+
+默认 mock report：
+
+```bash
+python scripts/build_reports.py --chunks-root llm_chunks --reports-root reports --provider mock
+python scripts/validate_reports.py --chunks-root llm_chunks --reports-root reports
+```
+
+用 LM Studio 文本模型生成 report：
+
+```bash
+python scripts/build_reports.py --chunks-root llm_chunks --reports-root reports --provider lmstudio --month 2025-12 --overwrite
+python scripts/validate_reports.py --chunks-root llm_chunks --reports-root reports --month 2025-12 --summary
+```
+
+如果你使用 OpenRouter 或其他外部模型做最终报告，可以跳过这一节。
+
 ## Stage 4 chunk 说明
 
 chunk 是给 LLM 读取的最终上下文文件。
@@ -377,28 +340,6 @@ chunk 是给 LLM 读取的最终上下文文件。
 - `failed` / `skipped` 图片不会伪造成文字，但会在结构化字段里保留。
 
 默认策略是按时间顺序装箱，目标大小约 `1200` tokens。估算方法是稳定启发式，不追求和某个模型 tokenizer 完全一致。
-
-## 可选：生成本地 report
-
-默认 mock report：
-
-```bash
-python scripts/build_reports.py --chunks-root llm_chunks --reports-root reports --provider mock
-python scripts/validate_reports.py --chunks-root llm_chunks --reports-root reports
-```
-
-用 LM Studio 文本模型生成 report：
-
-```bash
-$env:FLOMO_LLM_BASE_URL="http://127.0.0.1:1234/v1"
-$env:FLOMO_LLM_MODEL="<你的文本模型名>"
-$env:FLOMO_LLM_TIMEOUT_SECONDS="120"
-
-python scripts/build_reports.py --chunks-root llm_chunks --reports-root reports --provider lmstudio --month 2025-12 --overwrite
-python scripts/validate_reports.py --chunks-root llm_chunks --reports-root reports --month 2025-12 --summary
-```
-
-如果你使用 OpenRouter 或其他外部模型做最终报告，可以跳过这一节。
 
 ## 开发者：项目结构和测试
 
@@ -446,13 +387,13 @@ make test
 
 - 每个 stage 只读上游文件、写自己的派生产物。
 - Stage 1 的 raw JSONL 是事实层，不被下游改写。
-- 下游输出必须能重新生成。
+- 下游输出必须可以重新生成。
 - 所有路径字段保持相对路径。
 - 所有关键输出都有 validator。
 
 ## Agent：边界和契约
 
-Agent 接手时先读这三处：
+Agent 接手时先读这些位置：
 
 1. `AGENTS.md`
 2. `README.md` 或 `README.en.md`

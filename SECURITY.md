@@ -17,14 +17,14 @@ GitHub.
 This project is designed to process personal Flomo exports locally. Do not
 commit real exports or generated private outputs.
 
-The following directories are intentionally ignored except for `.gitkeep`:
+The following directories are intentionally ignored except for tracked placeholders:
 
 - `raw/`
 - `store/`
 - `monthly/`
 - `llm_chunks/`
 - `reports/`
-- `preview/`
+- local `preview/` if present
 
 Before publishing or sharing a fork, run:
 

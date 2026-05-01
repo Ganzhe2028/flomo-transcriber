@@ -8,6 +8,24 @@
 - `b`：重要功能、处理流程升级、版本更新换代。
 - `c`：小功能、日常修正、文档或脚本微调。
 
+## 2026-05-01 - 0.4.0 级别更新
+
+### 本次更新内容
+
+- 新增跨平台引导脚本 `scripts/guide.py`，普通用户可以通过菜单完成首次生成、日常更新、单图探测和失败图片重试。
+- 引导脚本会读取 `.env` 中的 LM Studio 配置；模型名缺失或仍是示例占位值时会直接停止并提示修正。
+- Windows 直接执行 `scripts\guide.py` 时，如果当前 shell 已激活 `.venv`，引导脚本会用虚拟环境里的 Python 调用后续 stage 脚本。
+- 引导脚本复用现有 Stage 1-4 和失败重试脚本，不改变 JSONL schema、目录结构或下游产物。
+- 重写中英文 README 的使用入口，区分“第一次使用”和“日常使用”，并把单阶段命令、长图切片、手动写回和本地 report 移到高级用法。
+- 扩展 CLI 测试，覆盖 `.env` 加载、mock provider 生成 chunks、缺少 LM Studio 配置时停止、以及引导脚本重试失败图片。
+
+### 验证结果
+
+- `python -m ruff check scripts\guide.py tests\test_cli.py` 通过。
+- `python -m pytest` 通过：62 passed。
+- `python -m mypy src` 通过。
+- `python scripts\check_open_source_readiness.py` 通过；本地 `raw/`、`store/`、`monthly/`、`llm_chunks/` 中仍有被忽略的私人数据，不能直接打包工作树发布。
+
 ## 2026-04-28 - 0.3.0 级别更新
 
 ### 本次更新内容

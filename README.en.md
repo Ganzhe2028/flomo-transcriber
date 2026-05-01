@@ -5,32 +5,25 @@
 Turn your Flomo memory archive into files that LLMs can actually read.
 
 > [!NOTE]
-> Tested my own flomo export package: reduced to approximately **0.059%** of the original size, i.e., a reduction of about **99.94%**.
+> Tested my own Flomo export package: reduced to approximately **0.059%** of the original size, i.e. a reduction of about **99.94%**.
 
 Many people use Flomo as a long-term memory system. After years of notes, the export can contain thousands of memos and many images, but it is not easy to hand that export to an LLM: text is scattered, images are unread, months are not split cleanly, and source tracking is fragile. `flomo-transcriber` turns that local export into clean, inspectable, reproducible files.
 
-It keeps your original memo text, can convert readable image content into text through a local vision model, merges everything by month, and produces chunk files that external LLMs can read directly.
+It keeps your original memo text, can use a local LM Studio vision model to convert image text and visible details into text, and produces chunk files that external LLMs can read directly:
 
-What it does:
-
-1. Extract memos and images from a local Flomo HTML export.
-2. Save stable JSONL files.
-3. Optionally use LM Studio to read text and visual information from static images.
-4. Merge memo text and image descriptions by month.
-5. Build `llm_chunks/YYYY-MM/*.json` for OpenRouter, ChatGPT, Claude, or other external models.
-6. Optionally build local monthly reports.
+```text
+llm_chunks/YYYY-MM/*.json
+```
 
 This is not a web app and does not require a database. Everything is local files.
 
 ## Start Here
 
-Choose the section that matches your role:
-
-- If you only want to prepare Flomo data for an LLM, read [User: Shortest Path](#user-shortest-path).
+- If you only want to prepare Flomo data for an LLM, read [First Use](#first-use) and [Normal Use](#normal-use).
+- If you need troubleshooting, long screenshot handling, or single-stage commands, read [Advanced Usage and Troubleshooting](#advanced-usage-and-troubleshooting).
 - If you want to change code or maintain the project, read [Developer: Structure and Tests](#developer-structure-and-tests).
-- If you are an AI agent taking over the repo, read [Agent: Boundaries and Contracts](#agent-boundaries-and-contracts).
 
-## User: Shortest Path
+## First Use
 
 ### 1. Install
 
@@ -38,7 +31,34 @@ Choose the section that matches your role:
 pip install -e .[dev]
 ```
 
-### 2. Put Your Flomo Export Into `raw/`
+### 2. Prepare Configuration
+
+Windows:
+
+```bat
+copy .env.example .env
+```
+
+macOS / Linux:
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and at least set your own vision model name:
+
+```text
+FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
+FLOMO_VLM_MODEL=<your-vision-model-name>
+FLOMO_VLM_TIMEOUT_SECONDS=180
+FLOMO_VLM_MAX_TOKENS=4096
+```
+
+The scripts do not choose a model automatically. They only read the model name from `.env` or the current environment.
+
+If you only want to test the flow without connecting to LM Studio, choose `mock` in the guide.
+
+### 3. Put Your Flomo Export Into `raw/`
 
 Place your Flomo HTML export under:
 
@@ -50,199 +70,56 @@ Both the regular layout `raw/YYYY/flomo@User-YYYYMMDD/*.html` and the duplicate 
 
 This repository does not include real Flomo data. `raw/`, `store/`, `monthly/`, `llm_chunks/`, and `reports/` are ignored by Git by default so private data is not accidentally committed.
 
-### 3. Build the Raw Data Layer
+### 4. Run the Guide
 
 ```bash
-python scripts/extract_raw.py --raw-root raw --store-root store
-python scripts/validate_store.py --store-root store
+python scripts/guide.py
 ```
 
-After this step, you should have:
+For the first run, choose:
 
 ```text
-store/memo.raw.jsonl
-store/image.raw.jsonl
-store/missing_image.raw.jsonl
-store/images/
+1. First run: build LLM chunks from raw/
 ```
 
-### 4. Convert Images Into Text
+Then choose the month and image provider:
 
-If you only want to test the pipeline without calling a real model:
+- `lmstudio`: read real image content with LM Studio.
+- `mock`: test the flow without model calls.
 
-```bash
-python scripts/enrich_images.py --store-root store --provider mock
-python scripts/validate_enriched_images.py --store-root store
-```
-
-If you want to read real image content with LM Studio, start LM Studio's OpenAI-compatible server, then set:
-
-```bash
-export FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
-export FLOMO_VLM_MODEL="<your-vision-model-name>"
-export FLOMO_VLM_TIMEOUT_SECONDS="180"
-export FLOMO_VLM_MAX_TOKENS="4096"
-```
-
-Probe one image first:
-
-```bash
-python scripts/probe_lmstudio_vlm.py --image store/images/2025/2025-12/example.png
-```
-
-If the probe returns `connection refused` or `WinError 10061`, the script could not reach LM Studio. This is not an image parsing failure. Check:
-
-- LM Studio's OpenAI-compatible server is running.
-- `FLOMO_VLM_BASE_URL` matches the host and port shown by LM Studio. The common value is `http://127.0.0.1:1234/v1`.
-- The vision model is loaded in LM Studio, and `FLOMO_VLM_MODEL` matches the model name.
-
-Then process one month:
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12
-python scripts/validate_enriched_images.py --store-root store
-```
-
-`--month 2025-12` is optional. If you omit `--month`, all months are processed:
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio
-```
-
-If your local model server allows concurrent predictions, add `--workers` to process images in parallel:
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio --workers 4
-```
-
-If a long screenshot, narrow screenshot, or heavily compressed screenshot fails as a whole image, enable sliced fallback. The command cuts tall images into vertical clips, reads them in order, then merges the result back into the original `image_id`:
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images
-```
-
-Defaults are `500px` clip height, `60px` overlap, and `2x` upscale before sending each clip to the model. To tune them:
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images --slice-height 500 --slice-overlap 60 --slice-upscale 2
-```
-
-If you already know a batch of tall images performs poorly as whole images, skip whole-image recognition:
-
-```bash
-python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --force-slice-long-images
-```
-
-Stage 2 writes `store/image.enriched.jsonl` after each completed image. If you pause or close the run, the next run skips existing successful records and continues with failed or unfinished records.
-
-### 5. Build LLM-Ready Chunks
-
-```bash
-python scripts/merge_monthly.py --store-root store --monthly-root monthly
-python scripts/validate_monthly.py --store-root store --monthly-root monthly
-python scripts/build_chunks.py --monthly-root monthly --chunks-root llm_chunks --overwrite
-python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunks
-```
-
-The final files for external LLMs are:
+When it finishes, the files for external LLMs are here:
 
 ```text
 llm_chunks/YYYY-MM/*.json
 ```
 
-To process only one month:
+## Normal Use
+
+After configuration, the daily entry point is still:
 
 ```bash
-python scripts/merge_monthly.py --store-root store --monthly-root monthly --month 2025-12
-python scripts/validate_monthly.py --store-root store --monthly-root monthly --month 2025-12
-python scripts/build_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-12 --overwrite
-python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-12 --summary
+python scripts/guide.py
 ```
 
-## Convenience Scripts
+Common choices:
 
-### macOS / Linux
+| Choice | Use When | Result |
+| --- | --- | --- |
+| `1. First run` | You are building chunks from `raw/` for the first time | Creates `llm_chunks/YYYY-MM/*.json` |
+| `2. Daily update` | You changed `raw/` and want fresh chunks | Skips successful images and fills new content |
+| `3. Probe one image` | You are checking whether LM Studio can read images | Tests one image |
+| `4. Retry failed image records` | Some image records failed | Retries failed records only |
 
-Stage 2 uses the vision model:
+To process one month, enter a month like `2025-12`; press Enter to process all months.
+
+You can also skip the menu:
 
 ```bash
-export FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
-export FLOMO_VLM_MODEL="<your-vision-model-name>"
-export FLOMO_VLM_TIMEOUT_SECONDS="180"
-export FLOMO_VLM_MAX_TOKENS="4096"
-
-scripts/00_probe_lmstudio_image.sh store/images/2025/2025-12/example.png
-scripts/10_stage2_enrich_lmstudio.sh 2025-12
+python scripts/guide.py --action first --provider lmstudio --month 2025-12
+python scripts/guide.py --action daily --provider lmstudio --month 2025-12
+python scripts/guide.py --action retry --provider lmstudio --month 2025-12
+python scripts/guide.py --action probe --image store/images/2025/2025-12/example.png
 ```
-
-Stage 3-4 are local file operations:
-
-```bash
-scripts/20_stage3_4_build_context.sh 2025-12
-```
-
-Omit the month to process all months:
-
-```bash
-scripts/10_stage2_enrich_lmstudio.sh
-scripts/20_stage3_4_build_context.sh
-```
-
-### Windows
-
-Set the LM Studio environment variables in PowerShell:
-
-```powershell
-$env:FLOMO_VLM_BASE_URL="http://127.0.0.1:1234/v1"
-$env:FLOMO_VLM_MODEL="<your-vision-model-name>"
-$env:FLOMO_VLM_TIMEOUT_SECONDS="180"
-$env:FLOMO_VLM_MAX_TOKENS="4096"
-```
-
-In CMD, use:
-
-```bat
-set FLOMO_VLM_BASE_URL=http://127.0.0.1:1234/v1
-set FLOMO_VLM_MODEL=<your-vision-model-name>
-set FLOMO_VLM_TIMEOUT_SECONDS=180
-set FLOMO_VLM_MAX_TOKENS=4096
-```
-
-Windows scripts do not choose a model automatically. They only read `FLOMO_VLM_MODEL` from the current environment. If it is missing, the script stops; startup output includes `vlm_model=...` so you can confirm the exact model.
-
-Probe one image:
-
-```bat
-scripts\00_probe_lmstudio_image.bat store\images\2025\2025-12\example.png
-```
-
-Run Stage 2 with the model:
-
-```bat
-scripts\10_stage2_enrich_lmstudio.bat 2025-12
-```
-
-Run local Stage 3-4:
-
-```bat
-scripts\20_stage3_4_build_context.bat 2025-12
-```
-
-Run from `raw/` through Stage 4:
-
-```bat
-scripts\30_stage2_4_prepare_context.bat 2025-12
-```
-
-This script regenerates and validates `store/*.raw.jsonl` first, so you can rerun it directly after updating `raw/`. If you omit `2025-12`, all months are processed.
-
-Retry failed images only:
-
-```bat
-scripts\40_retry_failed_images_lmstudio.bat 2025-12
-```
-
-This script runs up to 3 rounds by default and only processes images with `status=failed`. Existing successful records are not rerun. If you omit `2025-12`, all months are processed.
 
 ## Folders and Outputs
 
@@ -263,7 +140,7 @@ The most important output is:
 llm_chunks/YYYY-MM/*.json
 ```
 
-If you plan to use OpenRouter for final summarization, this is usually the only directory your external model needs to read.
+If you plan to use OpenRouter, ChatGPT, Claude, or another external model for final summarization, this is usually the only directory your external model needs to read.
 
 ## What Each Stage Does
 
@@ -275,9 +152,107 @@ If you plan to use OpenRouter for final summarization, this is usually the only 
 | Stage 4 chunk | `monthly/YYYY-MM.enriched.jsonl` | `llm_chunks/YYYY-MM/*.json` | Build LLM-readable context chunks |
 | Stage 5 report | `llm_chunks/YYYY-MM/*.json` | `reports/YYYY-MM.report.md`, `reports/YYYY-MM.report.json` | Optional local monthly report generation |
 
-Stage 1-4 are the recommended main path. Stage 5 is optional. If you use OpenRouter or another external model for the final report, you can stop after Stage 4.
+Stage 1-4 are the recommended main path. Stage 5 is optional. If you use an external model for the final report, you can stop after Stage 4.
 
-## Stage 2 Image Enrichment
+## Advanced Usage and Troubleshooting
+
+### LM Studio Configuration
+
+`lmstudio` reads:
+
+- `FLOMO_VLM_BASE_URL`: for example `http://127.0.0.1:1234/v1`
+- `FLOMO_VLM_MODEL`: local vision model name
+- `FLOMO_VLM_API_KEY`: optional
+- `FLOMO_VLM_TIMEOUT_SECONDS`: optional, default `60`
+- `FLOMO_VLM_MAX_TOKENS`: optional, default `4096`
+- `FLOMO_VLM_SLICE_LONG_IMAGES`: optional, set to `true` to retry failed tall images as vertical clips
+- `FLOMO_VLM_FORCE_SLICE_LONG_IMAGES`: optional, set to `true` to skip whole-image recognition for images taller than the slice height
+- `FLOMO_VLM_SLICE_HEIGHT`: optional, default `500`
+- `FLOMO_VLM_SLICE_OVERLAP`: optional, default `60`
+- `FLOMO_VLM_SLICE_UPSCALE`: optional, default `2`
+
+If the probe returns `connection refused` or `WinError 10061`, the script could not reach LM Studio. Check:
+
+- LM Studio's OpenAI-compatible server is running.
+- `FLOMO_VLM_BASE_URL` matches the host and port shown by LM Studio.
+- The vision model is loaded in LM Studio, and `FLOMO_VLM_MODEL` matches the model name.
+
+### Single-Stage Commands
+
+Most users should start with `python scripts/guide.py`. These commands are useful for troubleshooting or rerunning one stage.
+
+Build the raw data layer:
+
+```bash
+python scripts/extract_raw.py --raw-root raw --store-root store
+python scripts/validate_store.py --raw-root raw --store-root store --summary
+```
+
+Read images:
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12
+python scripts/validate_enriched_images.py --store-root store --summary
+```
+
+Build chunks:
+
+```bash
+python scripts/merge_monthly.py --store-root store --monthly-root monthly --month 2025-12
+python scripts/validate_monthly.py --store-root store --monthly-root monthly --month 2025-12 --summary
+python scripts/build_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-12 --overwrite
+python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-12 --summary
+```
+
+### Platform Scripts
+
+These scripts remain available for users who already know the flow.
+
+macOS / Linux:
+
+```bash
+scripts/00_probe_lmstudio_image.sh store/images/2025/2025-12/example.png
+scripts/10_stage2_enrich_lmstudio.sh 2025-12
+scripts/20_stage3_4_build_context.sh 2025-12
+```
+
+Windows:
+
+```bat
+scripts\00_probe_lmstudio_image.bat store\images\2025\2025-12\example.png
+scripts\10_stage2_enrich_lmstudio.bat 2025-12
+scripts\20_stage3_4_build_context.bat 2025-12
+scripts\30_stage2_4_prepare_context.bat 2025-12
+scripts\40_retry_failed_images_lmstudio.bat 2025-12
+```
+
+### Long Images and Screenshots
+
+If a long screenshot, narrow screenshot, or heavily compressed screenshot fails as a whole image, enable sliced fallback:
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images
+```
+
+Defaults are `500px` clip height, `60px` overlap, and `2x` upscale before sending each clip to the model. To tune them:
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --slice-long-images --slice-height 500 --slice-overlap 60 --slice-upscale 2
+```
+
+If you already know a batch of tall images performs poorly as whole images, skip whole-image recognition:
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --force-slice-long-images
+```
+
+If your local model server allows concurrent predictions, add `--workers`:
+
+```bash
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --workers 4
+```
+
+### Image Enrichment Notes
 
 Currently supported static image types:
 
@@ -294,29 +269,9 @@ Explicitly skipped:
 
 Visual descriptions cover visible non-text content such as photos, objects, scenes, charts, UI layout, diagrams, and screenshots. Dense screenshots or photographed notes keep the most important text instead of attempting full verbatim OCR.
 
-Providers:
+Image enrichment failures do not stop the whole run. Each completed image is saved immediately. Records that still fail keep `status=failed` and the final error message. The next run skips successful records and continues with failed or unfinished records.
 
-- `mock`: test provider, no model call.
-- `lmstudio`: calls LM Studio's OpenAI-compatible `/chat/completions` endpoint.
-
-`lmstudio` reads:
-
-- `FLOMO_VLM_BASE_URL`: for example `http://127.0.0.1:1234/v1`
-- `FLOMO_VLM_MODEL`: local vision model name
-- `FLOMO_VLM_API_KEY`: optional
-- `FLOMO_VLM_TIMEOUT_SECONDS`: optional, default `60`
-- `FLOMO_VLM_MAX_TOKENS`: optional, default `4096`, limits model output length for each image. If dense screenshots or photographed notes return a truncated JSON error, raise it further.
-- `FLOMO_VLM_SLICE_LONG_IMAGES`: optional, set to `true` to retry failed tall images as vertical clips.
-- `FLOMO_VLM_FORCE_SLICE_LONG_IMAGES`: optional, set to `true` to skip whole-image recognition for images taller than the slice height.
-- `FLOMO_VLM_SLICE_HEIGHT`: optional, default `500`, vertical clip height in pixels.
-- `FLOMO_VLM_SLICE_OVERLAP`: optional, default `60`, vertical overlap between clips so text is less likely to be cut in half.
-- `FLOMO_VLM_SLICE_UPSCALE`: optional, default `2`, upscale factor applied before sending each clip to the model.
-
-Image enrichment failures do not stop the whole run. The command finishes the first pass, then retries failed records only, up to 3 retry rounds. Each completed image is saved immediately. Records that still fail keep `status=failed` and the final error message.
-
-Sliced recognition does not change the JSONL structure. A successful long image is still written as one record for the original image, with merged content in `ocr_text` and `visual_description`.
-
-Existing successful records are skipped by default. To rerun successful records:
+To rerun successful records:
 
 ```bash
 python scripts/enrich_images.py --store-root store --provider lmstudio --overwrite
@@ -345,6 +300,24 @@ python scripts/build_chunks.py --monthly-root monthly --chunks-root llm_chunks -
 python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-04
 ```
 
+### Optional: Build Local Reports
+
+Mock report:
+
+```bash
+python scripts/build_reports.py --chunks-root llm_chunks --reports-root reports --provider mock
+python scripts/validate_reports.py --chunks-root llm_chunks --reports-root reports
+```
+
+LM Studio text model report:
+
+```bash
+python scripts/build_reports.py --chunks-root llm_chunks --reports-root reports --provider lmstudio --month 2025-12 --overwrite
+python scripts/validate_reports.py --chunks-root llm_chunks --reports-root reports --month 2025-12 --summary
+```
+
+If you use OpenRouter or another external model for final reporting, you can skip this section.
+
 ## Stage 4 Chunks
 
 Chunks are the final context files for LLMs.
@@ -367,28 +340,6 @@ Notes:
 - `failed` and `skipped` images are not fabricated into text, but they remain traceable in structured fields.
 
 The current strategy packs memos sequentially by time. The default target size is about `1200` estimated tokens. Token estimation is deterministic and heuristic; it is not meant to exactly match a specific model tokenizer.
-
-## Optional: Build Local Reports
-
-Mock report:
-
-```bash
-python scripts/build_reports.py --chunks-root llm_chunks --reports-root reports --provider mock
-python scripts/validate_reports.py --chunks-root llm_chunks --reports-root reports
-```
-
-LM Studio text model report:
-
-```bash
-export FLOMO_LLM_BASE_URL="http://127.0.0.1:1234/v1"
-export FLOMO_LLM_MODEL="<your-text-model-name>"
-export FLOMO_LLM_TIMEOUT_SECONDS="120"
-
-python scripts/build_reports.py --chunks-root llm_chunks --reports-root reports --provider lmstudio --month 2025-12 --overwrite
-python scripts/validate_reports.py --chunks-root llm_chunks --reports-root reports --month 2025-12 --summary
-```
-
-If you use OpenRouter or another external model for final reporting, you can skip this section.
 
 ## Developer: Structure and Tests
 

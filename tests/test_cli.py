@@ -4,7 +4,12 @@ import json
 import os
 import subprocess
 import sys
+from importlib import util
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 from tests.conftest import (
     FakeHTTPResponse,
@@ -12,6 +17,16 @@ from tests.conftest import (
     lmstudio_chat_response,
     run_fake_lmstudio_server,
 )
+
+
+def _load_guide_module() -> ModuleType:
+    repo_root = Path(__file__).resolve().parent.parent
+    spec = util.spec_from_file_location("guide", repo_root / "scripts" / "guide.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_extract_and_validate_scripts(tmp_path: Path) -> None:
@@ -673,3 +688,247 @@ def test_run_pipeline_script_happy_path(tmp_path: Path) -> None:
     )
     assert pipeline.returncode == 0, pipeline.stdout + pipeline.stderr
     assert (reports_root / "2026-03.report.md").exists()
+
+
+def test_guide_script_prefers_active_virtualenv_python(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    guide = _load_guide_module()
+    venv_root = tmp_path / ".venv"
+    if os.name == "nt":
+        python_path = venv_root / "Scripts" / "python.exe"
+    else:
+        python_path = venv_root / "bin" / "python"
+    python_path.parent.mkdir(parents=True)
+    python_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setenv("VIRTUAL_ENV", str(venv_root))
+
+    assert guide._python_executable() == str(python_path)
+
+
+def test_guide_script_mock_first_run_builds_chunks(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    raw_root = build_sample_raw(tmp_path / "raw")
+    store_root = tmp_path / "store"
+    monthly_root = tmp_path / "monthly"
+    chunks_root = tmp_path / "llm_chunks"
+
+    guide = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "guide.py"),
+            "--action",
+            "first",
+            "--provider",
+            "mock",
+            "--raw-root",
+            str(raw_root),
+            "--store-root",
+            str(store_root),
+            "--monthly-root",
+            str(monthly_root),
+            "--chunks-root",
+            str(chunks_root),
+            "--month",
+            "2026-03",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=repo_root,
+    )
+
+    assert guide.returncode == 0, guide.stdout + guide.stderr
+    assert "Ready for external LLM input" in guide.stdout
+    assert (chunks_root / "2026-03" / "2026-03-0001.json").exists()
+
+
+def test_guide_script_loads_env_file_for_lmstudio(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    raw_root = build_sample_raw(tmp_path / "raw")
+    store_root = tmp_path / "store"
+    monthly_root = tmp_path / "monthly"
+    chunks_root = tmp_path / "llm_chunks"
+    env_file = tmp_path / ".env"
+
+    with run_fake_lmstudio_server(
+        [
+            FakeHTTPResponse(
+                status=200,
+                body=lmstudio_chat_response(
+                    '{"ocr_text":"photo text","visual_description":"First fixture image."}'
+                ),
+            ),
+            FakeHTTPResponse(
+                status=200,
+                body=lmstudio_chat_response(
+                    '{"ocr_text":"","visual_description":"Second fixture image."}'
+                ),
+            ),
+        ]
+    ) as server:
+        env_file.write_text(
+            "\n".join(
+                [
+                    f"FLOMO_VLM_BASE_URL={server.url}",
+                    "FLOMO_VLM_MODEL=local-vlm",
+                    "FLOMO_VLM_TIMEOUT_SECONDS=2",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        env = os.environ.copy()
+        env.pop("FLOMO_VLM_BASE_URL", None)
+        env.pop("FLOMO_VLM_MODEL", None)
+        env.pop("FLOMO_VLM_TIMEOUT_SECONDS", None)
+
+        guide = subprocess.run(
+            [
+                sys.executable,
+                str(repo_root / "scripts" / "guide.py"),
+                "--action",
+                "first",
+                "--provider",
+                "lmstudio",
+                "--env-file",
+                str(env_file),
+                "--raw-root",
+                str(raw_root),
+                "--store-root",
+                str(store_root),
+                "--monthly-root",
+                str(monthly_root),
+                "--chunks-root",
+                str(chunks_root),
+                "--month",
+                "2026-03",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=repo_root,
+            env=env,
+        )
+
+    assert guide.returncode == 0, guide.stdout + guide.stderr
+    assert "Loaded configuration:" in guide.stdout
+    assert (chunks_root / "2026-03" / "2026-03-0001.json").exists()
+    assert len(server.requests) == 2
+
+
+def test_guide_script_stops_when_lmstudio_config_is_missing(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    raw_root = build_sample_raw(tmp_path / "raw")
+    store_root = tmp_path / "store"
+    env = os.environ.copy()
+    env.pop("FLOMO_VLM_BASE_URL", None)
+    env.pop("FLOMO_VLM_MODEL", None)
+
+    guide = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "guide.py"),
+            "--action",
+            "first",
+            "--provider",
+            "lmstudio",
+            "--env-file",
+            str(tmp_path / ".env"),
+            "--raw-root",
+            str(raw_root),
+            "--store-root",
+            str(store_root),
+            "--monthly-root",
+            str(tmp_path / "monthly"),
+            "--chunks-root",
+            str(tmp_path / "llm_chunks"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=repo_root,
+        env=env,
+    )
+
+    assert guide.returncode == 2
+    assert "Missing LM Studio configuration" in guide.stderr
+    assert not (store_root / "memo.raw.jsonl").exists()
+
+
+def test_guide_script_retry_action_uses_retry_flow(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    raw_root = build_sample_raw(tmp_path / "raw")
+    store_root = tmp_path / "store"
+
+    extract = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "extract_raw.py"),
+            "--raw-root",
+            str(raw_root),
+            "--store-root",
+            str(store_root),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert extract.returncode == 0, extract.stderr
+
+    image_record = json.loads(
+        (store_root / "image.raw.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    memo_records = [
+        json.loads(line)
+        for line in (store_root / "memo.raw.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    memo_record = {record["memo_id"]: record for record in memo_records}[image_record["memo_id"]]
+
+    with open(store_root / "image.enriched.jsonl", "w", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "image_id": image_record["image_id"],
+                    "memo_id": image_record["memo_id"],
+                    "created_at": memo_record["created_at"],
+                    "month": memo_record["created_at"][:7],
+                    "relative_path": image_record["image_relpath"],
+                    "source_relpath": image_record["source_relpath"],
+                    "media_type": "image/png",
+                    "ocr_text": "",
+                    "visual_description": "",
+                    "model_name": "old-vlm",
+                    "prompt_version": "old-v1",
+                    "run_id": "old-run",
+                    "status": "failed",
+                    "error_message": "temporary failure",
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+
+    guide = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "guide.py"),
+            "--action",
+            "retry",
+            "--provider",
+            "mock",
+            "--store-root",
+            str(store_root),
+            "--rounds",
+            "3",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=repo_root,
+    )
+
+    assert guide.returncode == 0, guide.stdout + guide.stderr
+    assert "Remaining failed: 0" in guide.stdout
