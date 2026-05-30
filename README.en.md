@@ -142,7 +142,7 @@ The GUI wraps the four common user actions:
 | Probe one image | `python scripts/guide.py --action probe` |
 | Retry failed images | `python scripts/guide.py --action retry` |
 
-The GUI reads and writes the project root `.env` file. You can set the LM Studio base URL, vision model, retry model, timeout, and max tokens in the interface. `.env` is still ignored by Git.
+The GUI reads and writes `.env`. You can set the LM Studio base URL, vision model, retry model, timeout, and max tokens in the interface. Folder paths are saved to `.flomo-gui-settings.json`, so the next launch keeps the last selected locations. Both `.env` and `.flomo-gui-settings.json` are ignored by Git.
 
 Development startup:
 

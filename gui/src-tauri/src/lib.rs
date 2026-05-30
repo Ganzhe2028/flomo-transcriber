@@ -26,6 +26,7 @@ const ENV_KEYS: [&str; 5] = [
     "FLOMO_VLM_TIMEOUT_SECONDS",
     "FLOMO_VLM_MAX_TOKENS",
 ];
+const GUI_SETTINGS_FILE: &str = ".flomo-gui-settings.json";
 
 #[derive(Default)]
 struct WorkflowState {
@@ -59,6 +60,18 @@ struct AppSettings {
     vlm_max_tokens: String,
     env_exists: bool,
     runtime_mode: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct GuiPathSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    raw_root: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    store_root: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    monthly_root: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    chunks_root: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,14 +113,21 @@ fn read_settings(app: AppHandle) -> Result<AppSettings, String> {
     let project_root = workspace_root(&app)?;
     let env_file = project_root.join(".env");
     let env = read_env_map(&env_file)?;
+    let gui_settings = read_gui_path_settings(&gui_settings_path(&project_root))?;
 
     Ok(AppSettings {
         project_root: project_root.to_string_lossy().into_owned(),
         env_file: env_file.to_string_lossy().into_owned(),
-        raw_root: project_root.join("raw").to_string_lossy().into_owned(),
-        store_root: project_root.join("store").to_string_lossy().into_owned(),
-        monthly_root: project_root.join("monthly").to_string_lossy().into_owned(),
-        chunks_root: project_root.join("llm_chunks").to_string_lossy().into_owned(),
+        raw_root: setting_path_or_default(gui_settings.raw_root, project_root.join("raw")),
+        store_root: setting_path_or_default(gui_settings.store_root, project_root.join("store")),
+        monthly_root: setting_path_or_default(
+            gui_settings.monthly_root,
+            project_root.join("monthly"),
+        ),
+        chunks_root: setting_path_or_default(
+            gui_settings.chunks_root,
+            project_root.join("llm_chunks"),
+        ),
         vlm_base_url: env
             .get("FLOMO_VLM_BASE_URL")
             .cloned()
@@ -134,7 +154,10 @@ fn read_settings(app: AppHandle) -> Result<AppSettings, String> {
 fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
     let env_file = normalize_env_file(&app, &settings.env_file)?;
     let updates = env_updates_from_settings(&settings);
-    write_env_file(&env_file, &updates)
+    write_env_file(&env_file, &updates)?;
+
+    let project_root = workspace_root(&app)?;
+    write_gui_path_settings(&gui_settings_path(&project_root), &settings)
 }
 
 #[tauri::command]
@@ -381,6 +404,57 @@ fn normalize_env_file(app: &AppHandle, path: &str) -> Result<PathBuf, String> {
         return Ok(requested);
     }
     Ok(workspace_root(app)?.join(requested))
+}
+
+fn gui_settings_path(project_root: &Path) -> PathBuf {
+    project_root.join(GUI_SETTINGS_FILE)
+}
+
+fn setting_path_or_default(value: Option<String>, default_path: PathBuf) -> String {
+    value
+        .map(|path| path.trim().to_string())
+        .filter(|path| !path.is_empty())
+        .unwrap_or_else(|| default_path.to_string_lossy().into_owned())
+}
+
+fn optional_path(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn gui_path_settings_from_app_settings(settings: &AppSettings) -> GuiPathSettings {
+    GuiPathSettings {
+        raw_root: optional_path(&settings.raw_root),
+        store_root: optional_path(&settings.store_root),
+        monthly_root: optional_path(&settings.monthly_root),
+        chunks_root: optional_path(&settings.chunks_root),
+    }
+}
+
+fn read_gui_path_settings(path: &Path) -> Result<GuiPathSettings, String> {
+    if !path.exists() {
+        return Ok(GuiPathSettings::default());
+    }
+
+    let content =
+        fs::read_to_string(path).map_err(|error| format!("无法读取 GUI 设置：{error}"))?;
+    if content.trim().is_empty() {
+        return Ok(GuiPathSettings::default());
+    }
+
+    serde_json::from_str(&content).map_err(|error| format!("无法解析 GUI 设置：{error}"))
+}
+
+fn write_gui_path_settings(path: &Path, settings: &AppSettings) -> Result<(), String> {
+    let gui_settings = gui_path_settings_from_app_settings(settings);
+    let mut content = serde_json::to_string_pretty(&gui_settings)
+        .map_err(|error| format!("无法生成 GUI 设置：{error}"))?;
+    content.push('\n');
+    fs::write(path, content).map_err(|error| format!("无法写入 GUI 设置：{error}"))
 }
 
 fn read_env_map(path: &Path) -> Result<HashMap<String, String>, String> {
@@ -681,11 +755,13 @@ where
 }
 
 fn new_task_id() -> String {
+    static TASK_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or_default();
-    format!("workflow-{millis}")
+    let counter = TASK_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    format!("workflow-{millis}-{}-{counter}", std::process::id())
 }
 
 #[cfg(debug_assertions)]
@@ -746,6 +822,50 @@ mod tests {
         assert!(content.contains("OTHER=value"));
         assert!(content.contains("FLOMO_VLM_MODEL=local-vlm"));
         assert!(!content.contains("old-retry"));
+    }
+
+    #[test]
+    fn gui_path_settings_round_trip_persists_folder_paths() {
+        let dir = std::env::temp_dir().join(new_task_id());
+        fs::create_dir_all(&dir).unwrap();
+        let settings_file = gui_settings_path(&dir);
+        let mut settings = sample_settings(&dir.join(".env"));
+        settings.raw_root = "D:/Flomo/raw".to_string();
+        settings.store_root = "D:/Flomo/store".to_string();
+        settings.monthly_root = "D:/Flomo/monthly".to_string();
+        settings.chunks_root = "D:/Flomo/chunks".to_string();
+
+        write_gui_path_settings(&settings_file, &settings).unwrap();
+        let content = fs::read_to_string(&settings_file).unwrap();
+        let stored = read_gui_path_settings(&settings_file).unwrap();
+
+        assert!(content.contains("\"raw_root\": \"D:/Flomo/raw\""));
+        assert!(!content.contains("vlm_model"));
+        assert_eq!(stored.raw_root.as_deref(), Some("D:/Flomo/raw"));
+        assert_eq!(stored.store_root.as_deref(), Some("D:/Flomo/store"));
+        assert_eq!(
+            setting_path_or_default(stored.monthly_root, PathBuf::from("monthly")),
+            "D:/Flomo/monthly"
+        );
+    }
+
+    #[test]
+    fn gui_path_settings_omits_empty_paths_and_uses_defaults() {
+        let dir = std::env::temp_dir().join(new_task_id());
+        fs::create_dir_all(&dir).unwrap();
+        let settings_file = gui_settings_path(&dir);
+        let mut settings = sample_settings(&dir.join(".env"));
+        settings.raw_root = "   ".to_string();
+
+        write_gui_path_settings(&settings_file, &settings).unwrap();
+        let content = fs::read_to_string(&settings_file).unwrap();
+        let stored = read_gui_path_settings(&settings_file).unwrap();
+
+        assert!(!content.contains("raw_root"));
+        assert_eq!(
+            setting_path_or_default(stored.raw_root, PathBuf::from("fallback")),
+            "fallback"
+        );
     }
 
     #[test]

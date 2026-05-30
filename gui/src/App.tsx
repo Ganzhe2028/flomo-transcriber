@@ -202,7 +202,7 @@ function App() {
   async function saveSettings() {
     await invoke("save_settings", { settings });
     setSettings((current) => ({ ...current, env_exists: true }));
-    pushSystemLog("配置已保存到 .env");
+    pushSystemLog("配置已保存");
   }
 
   async function chooseDirectory(field: "raw_root" | "store_root" | "monthly_root" | "chunks_root") {

@@ -142,7 +142,7 @@ GUI 封装普通用户最常用的四个操作：
 | 探测图片 | `python scripts/guide.py --action probe` |
 | 重试失败 | `python scripts/guide.py --action retry` |
 
-GUI 会直接读写项目根目录的 `.env`，可在界面里设置 LM Studio 地址、视觉模型、重试模型、超时和 max tokens。`.env` 仍然被 Git 忽略。
+GUI 会直接读写 `.env`，可在界面里设置 LM Studio 地址、视觉模型、重试模型、超时和 max tokens。文件夹路径会保存到 `.flomo-gui-settings.json`，下次打开会继续使用上次选择的位置。`.env` 和 `.flomo-gui-settings.json` 都会被 Git 忽略。
 
 开发版启动：
 
