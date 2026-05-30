@@ -20,6 +20,7 @@ llm_chunks/YYYY-MM/*.json
 ## 你应该从哪里开始
 
 - 只是想把 Flomo 数据整理给 LLM 用：看 [第一次使用](#第一次使用) 和 [日常使用](#日常使用)。
+- 想用图形界面操作：看 [桌面 GUI](#桌面-gui)。
 - 需要排错、处理长截图、单独跑某个阶段：看 [高级用法和排错](#高级用法和排错)。
 - 想改代码、跑测试、维护项目：看 [开发者：项目结构和测试](#开发者项目结构和测试)。
 
@@ -124,6 +125,35 @@ python scripts/guide.py --action retry --provider lmstudio --month 2025-12
 python scripts/guide.py --action probe --image store/images/2025/2025-12/example.png
 ```
 
+## 桌面 GUI
+
+仓库里包含一个开发版 Tauri 桌面 GUI，位置在：
+
+```text
+gui/
+```
+
+GUI 封装普通用户最常用的四个操作：
+
+| 操作 | 对应命令 |
+| --- | --- |
+| 首次生成 | `python scripts/guide.py --action first` |
+| 日常更新 | `python scripts/guide.py --action daily` |
+| 探测图片 | `python scripts/guide.py --action probe` |
+| 重试失败 | `python scripts/guide.py --action retry` |
+
+GUI 会直接读写项目根目录的 `.env`，可在界面里设置 LM Studio 地址、视觉模型、重试模型、超时和 max tokens。`.env` 仍然被 Git 忽略。
+
+开发版启动：
+
+```bat
+cd gui
+cmd /c npm install
+cmd /c npm run tauri dev
+```
+
+Windows 上运行 Tauri 需要先安装 Rust/Cargo、Microsoft C++ Build Tools 和 WebView2。当前 GUI 先调用本机 Python 和现有 `scripts/guide.py`；Windows 安装包和 Python sidecar 属于下一阶段。
+
 ## 目录和输出
 
 ```text
@@ -132,6 +162,7 @@ store/        Stage 1-2 输出：raw JSONL、图片副本、图片增强结果
 monthly/      Stage 3 输出：按月合并后的 memo 记录
 llm_chunks/   Stage 4 输出：给外部 LLM 读取的 chunk JSON
 reports/      Stage 5 输出：可选的本地月度报告
+gui/          开发版 Tauri 桌面 GUI
 scripts/      命令行入口
 src/          Python 源码
 tests/        测试
@@ -371,7 +402,15 @@ src/flomo_pipeline/
 
 ```bash
 python -m pytest
+python -m mypy src
 python scripts/check_open_source_readiness.py
+```
+
+GUI 前端检查：
+
+```bat
+cd gui
+cmd /c npm run build
 ```
 
 Makefile 也提供同等入口：

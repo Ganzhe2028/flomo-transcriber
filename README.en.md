@@ -20,6 +20,7 @@ This is not a web app and does not require a database. Everything is local files
 ## Start Here
 
 - If you only want to prepare Flomo data for an LLM, read [First Use](#first-use) and [Normal Use](#normal-use).
+- If you want a graphical interface, read [Desktop GUI](#desktop-gui).
 - If you need troubleshooting, long screenshot handling, or single-stage commands, read [Advanced Usage and Troubleshooting](#advanced-usage-and-troubleshooting).
 - If you want to change code or maintain the project, read [Developer: Structure and Tests](#developer-structure-and-tests).
 
@@ -124,6 +125,35 @@ python scripts/guide.py --action retry --provider lmstudio --month 2025-12
 python scripts/guide.py --action probe --image store/images/2025/2025-12/example.png
 ```
 
+## Desktop GUI
+
+The repository includes a development Tauri desktop GUI here:
+
+```text
+gui/
+```
+
+The GUI wraps the four common user actions:
+
+| Action | Command |
+| --- | --- |
+| First run | `python scripts/guide.py --action first` |
+| Daily update | `python scripts/guide.py --action daily` |
+| Probe one image | `python scripts/guide.py --action probe` |
+| Retry failed images | `python scripts/guide.py --action retry` |
+
+The GUI reads and writes the project root `.env` file. You can set the LM Studio base URL, vision model, retry model, timeout, and max tokens in the interface. `.env` is still ignored by Git.
+
+Development startup:
+
+```bat
+cd gui
+cmd /c npm install
+cmd /c npm run tauri dev
+```
+
+On Windows, Tauri requires Rust/Cargo, Microsoft C++ Build Tools, and WebView2. This first GUI version calls the local Python environment and the existing `scripts/guide.py`; a Windows installer and Python sidecar are reserved for the next phase.
+
 ## Folders and Outputs
 
 ```text
@@ -132,6 +162,7 @@ store/        Stage 1-2 outputs: raw JSONL, copied images, image enrichment
 monthly/      Stage 3 output: monthly merged memo records
 llm_chunks/   Stage 4 output: chunk JSON files for external LLMs
 reports/      Stage 5 output: optional local monthly reports
+gui/          Development Tauri desktop GUI
 scripts/      CLI entry points
 src/          Python source code
 tests/        Tests
@@ -371,7 +402,15 @@ Common commands:
 
 ```bash
 python -m pytest
+python -m mypy src
 python scripts/check_open_source_readiness.py
+```
+
+GUI frontend check:
+
+```bat
+cd gui
+cmd /c npm run build
 ```
 
 Makefile shortcuts:

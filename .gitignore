@@ -15,6 +15,10 @@ __pycache__/
 /pytest_work/
 /pytest_work_escalated/
 
+/gui/node_modules/
+/gui/dist/
+/gui/src-tauri/target/
+
 /raw/*
 !/raw/.gitkeep
 

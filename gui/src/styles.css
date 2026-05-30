@@ -1,0 +1,416 @@
+:root {
+  font-family:
+    Inter, "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  color: #1e2524;
+  background: #eef2ef;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --surface: #fbfcfa;
+  --surface-strong: #ffffff;
+  --line: #d8ded9;
+  --muted: #697471;
+  --text: #1e2524;
+  --accent: #007f73;
+  --accent-strong: #00695f;
+  --danger: #b92f2f;
+  --warning: #a86600;
+  --success: #207a44;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 980px;
+  min-height: 100vh;
+  background:
+    linear-gradient(135deg, rgba(0, 127, 115, 0.08), transparent 36%),
+    linear-gradient(315deg, rgba(168, 102, 0, 0.08), transparent 42%),
+    #eef2ef;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 0;
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 230px minmax(380px, 520px) minmax(420px, 1fr);
+  gap: 1px;
+  min-height: calc(100vh - 40px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--line);
+  box-shadow: 0 18px 45px rgba(24, 35, 32, 0.12);
+}
+
+.sidebar,
+.controlPane,
+.logPane {
+  background: var(--surface);
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 22px 16px;
+}
+
+.brand {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.brandMark {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 8px;
+  background: #13201e;
+  color: #d8fff8;
+  font-weight: 800;
+}
+
+.brand h1,
+.paneHeader h2,
+.logHeader h2,
+.sectionTitle h3 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.brand h1 {
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.brand p,
+.paneHeader p,
+.logHeader p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.actionList {
+  display: grid;
+  gap: 6px;
+}
+
+.actionButton {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 9px;
+  align-items: center;
+  width: 100%;
+  height: 42px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.actionButton:hover:not(:disabled),
+.actionButton.active {
+  background: #e7efeb;
+}
+
+.actionButton.active {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.actionButton:disabled,
+button:disabled,
+input:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.statusPill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding: 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--muted);
+  background: #eef3ef;
+}
+
+.statusPill.good {
+  color: var(--success);
+  background: #e5f4eb;
+}
+
+.statusPill.warn {
+  color: var(--warning);
+  background: #fff4df;
+}
+
+.controlPane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.paneHeader,
+.logHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.paneHeader h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 22px;
+}
+
+.runState {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 82px;
+  justify-content: center;
+  padding: 8px 10px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: #edf1ee;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.runState.running {
+  color: var(--accent-strong);
+}
+
+.runState.success {
+  color: var(--success);
+}
+
+.runState.failed {
+  color: var(--danger);
+}
+
+.runState.cancelled {
+  color: var(--warning);
+}
+
+.sectionBlock {
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #27302e;
+}
+
+.sectionTitle h3 {
+  font-size: 14px;
+}
+
+.pathField,
+.field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pathField {
+  grid-template-columns: 86px 1fr 38px;
+  align-items: center;
+  margin-bottom: 9px;
+}
+
+.pathField span {
+  color: #3b4743;
+  font-weight: 700;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.field.wide {
+  grid-column: 1 / -1;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cbd4ce;
+  border-radius: 7px;
+  padding: 0 11px;
+  color: var(--text);
+  background: var(--surface-strong);
+  outline: none;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 127, 115, 0.14);
+}
+
+.inlinePicker {
+  display: grid;
+  grid-template-columns: 1fr 38px;
+  gap: 8px;
+}
+
+.iconButton,
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.iconButton {
+  width: 38px;
+  color: #34413d;
+  background: #e8eeea;
+}
+
+.iconButton:hover:not(:disabled),
+.secondaryButton:hover:not(:disabled) {
+  background: #dce7e2;
+}
+
+.commandBar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: auto;
+  padding: 18px 22px;
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  padding: 0 16px;
+  font-weight: 700;
+}
+
+.primaryButton {
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.secondaryButton {
+  color: #24302c;
+  background: #e8eeea;
+}
+
+.secondaryButton.compact {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.dangerButton {
+  color: #ffffff;
+  background: var(--danger);
+}
+
+.logPane {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+}
+
+.logHeader h2 {
+  font-size: 20px;
+}
+
+.logOutput {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+  background: #101715;
+  color: #dbe8e3;
+}
+
+.emptyLog {
+  margin: 0;
+  color: #82908b;
+}
+
+.logLine {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.logLine span {
+  color: #7f918b;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.logLine pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.logLine.stderr pre {
+  color: #ffc4bd;
+}
+
+.logLine.system pre {
+  color: #b9eadf;
+}
