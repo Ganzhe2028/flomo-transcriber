@@ -173,6 +173,21 @@ select:disabled {
   background: #fff4df;
 }
 
+.runtimeInfo {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.runtimeInfo strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
 .controlPane {
   display: flex;
   flex-direction: column;

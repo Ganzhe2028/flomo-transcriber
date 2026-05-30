@@ -152,7 +152,23 @@ cmd /c npm install
 cmd /c npm run tauri dev
 ```
 
-Windows 上运行 Tauri 需要先安装 Rust/Cargo、Microsoft C++ Build Tools 和 WebView2。当前 GUI 先调用本机 Python 和现有 `scripts/guide.py`；Windows 安装包和 Python sidecar 属于下一阶段。
+Windows 上运行 Tauri 需要先安装 Rust/Cargo、Microsoft C++ Build Tools 和 WebView2。开发模式下，如果还没有构建 sidecar，GUI 会回退到本机 Python；安装版会优先使用内置 sidecar。
+
+### Windows 安装包
+
+第一版安装包目标是 NSIS `setup.exe`，暂不做代码签名、自动更新或 Microsoft Store 发布。未签名安装包可能触发 Windows SmartScreen 提示。
+
+打包前置条件：
+
+```bat
+pip install -e .[dev,gui]
+cd gui
+cmd /c npm install
+cmd /c npm run sidecar
+cmd /c npm run tauri:build:nsis
+```
+
+构建产物会出现在 `gui/src-tauri/target/release/bundle/nsis/`。安装包不会包含真实 `raw/`、`store/`、`monthly/`、`llm_chunks/`、`reports/` 或 `.env`。
 
 ## 目录和输出
 
@@ -411,6 +427,15 @@ GUI 前端检查：
 ```bat
 cd gui
 cmd /c npm run build
+```
+
+GUI 打包检查：
+
+```bat
+pip install -e .[gui]
+cd gui
+cmd /c npm run sidecar
+cmd /c npm run tauri:build:nsis
 ```
 
 Makefile 也提供同等入口：

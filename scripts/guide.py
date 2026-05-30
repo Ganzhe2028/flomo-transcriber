@@ -3,89 +3,39 @@
 from __future__ import annotations
 
 import argparse
-import os
-import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-PLACEHOLDER_VALUES = {
-    "",
-    "<your-vision-model-name>",
-    "<你的视觉模型名>",
-    "your-local-vision-model",
-}
+from flomo_pipeline.workflow import (  # noqa: E402
+    WorkflowOptions,
+    WorkflowPaths,
+    display_path,
+    load_env_file,
+    project_path,
+    python_executable,
+    require_vlm_config,
+    run_action,
+)
 
 
 def _project_path(path: Path) -> Path:
-    if path.is_absolute():
-        return path
-    return (PROJECT_ROOT / path).resolve()
+    return project_path(PROJECT_ROOT, path)
 
 
 def _display_path(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(PROJECT_ROOT))
-    except ValueError:
-        return str(path)
+    return display_path(PROJECT_ROOT, path)
 
 
 def _python_executable() -> str:
-    venv = os.getenv("VIRTUAL_ENV", "").strip()
-    if not venv:
-        return sys.executable
-
-    venv_root = Path(venv)
-    if os.name == "nt":
-        candidate = venv_root / "Scripts" / "python.exe"
-    else:
-        candidate = venv_root / "bin" / "python"
-    if candidate.exists():
-        return str(candidate)
-    return sys.executable
+    return python_executable()
 
 
 def _load_env_file(path: Path) -> list[str]:
-    if not path.exists():
-        return []
-
-    loaded: list[str] = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line.removeprefix("export ").strip()
-        if "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if not key:
-            continue
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-
-        if key not in os.environ:
-            os.environ[key] = value
-            loaded.append(key)
-
-    return loaded
-
-
-def _run(command: Sequence[str]) -> None:
-    print("$ " + " ".join(command))
-    result = subprocess.run(command, cwd=PROJECT_ROOT, check=False)
-    if result.returncode != 0:
-        raise SystemExit(result.returncode)
+    return load_env_file(path)
 
 
 def _with_month(command: list[str], month: str | None) -> list[str]:
@@ -95,35 +45,7 @@ def _with_month(command: list[str], month: str | None) -> list[str]:
 
 
 def _require_vlm_config(*, include_retry: bool = False) -> None:
-    missing: list[str] = []
-    if not os.getenv("FLOMO_VLM_BASE_URL", "").strip():
-        missing.append("FLOMO_VLM_BASE_URL")
-
-    model = os.getenv("FLOMO_VLM_MODEL", "").strip()
-    if model in PLACEHOLDER_VALUES:
-        missing.append("FLOMO_VLM_MODEL")
-
-    if missing:
-        print(
-            "Missing LM Studio configuration: "
-            + ", ".join(missing)
-            + ". Copy .env.example to .env and set your real vision model name.",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
-
-    print(f"vlm_model={model}")
-    if include_retry:
-        from flomo_pipeline.enrich.retry_config import resolve_lmstudio_retry_model_name
-
-        try:
-            resolution = resolve_lmstudio_retry_model_name(base_model_name=model)
-        except ValueError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            raise SystemExit(2) from exc
-        if resolution.warning is not None:
-            print(f"Warning: {resolution.warning}", file=sys.stderr)
-        print(f"retry_vlm_model={resolution.model_name or model}")
+    require_vlm_config(include_retry=include_retry)
 
 
 def _prompt_action() -> str | None:
@@ -182,110 +104,29 @@ def _build_chunks_from_raw(
     month: str | None,
     workers: int,
 ) -> None:
-    if provider == "lmstudio":
-        _require_vlm_config(include_retry=True)
-
-    python = _python_executable()
-    raw = str(raw_root)
-    store = str(store_root)
-    monthly = str(monthly_root)
-    chunks = str(chunks_root)
-
-    _run([python, "scripts/extract_raw.py", "--raw-root", raw, "--store-root", store])
-    _run(
-        [
-            python,
-            "scripts/validate_store.py",
-            "--raw-root",
-            raw,
-            "--store-root",
-            store,
-            "--summary",
-        ]
+    paths = WorkflowPaths(
+        project_root=PROJECT_ROOT,
+        raw_root=raw_root,
+        store_root=store_root,
+        monthly_root=monthly_root,
+        chunks_root=chunks_root,
     )
-
-    enrich_command = [
-        python,
-        "scripts/enrich_images.py",
-        "--store-root",
-        store,
-        "--provider",
-        provider,
-    ]
-    enrich_command = _with_month(enrich_command, month)
-    if workers > 1:
-        enrich_command.extend(["--workers", str(workers)])
-    _run(enrich_command)
-
-    _run([python, "scripts/validate_enriched_images.py", "--store-root", store, "--summary"])
-
-    _run(
-        _with_month(
-            [
-                python,
-                "scripts/merge_monthly.py",
-                "--store-root",
-                store,
-                "--monthly-root",
-                monthly,
-            ],
-            month,
-        )
+    run_action(
+        "first",
+        paths,
+        WorkflowOptions(provider=provider, month=month, workers=workers),
     )
-    _run(
-        _with_month(
-            [
-                python,
-                "scripts/validate_monthly.py",
-                "--store-root",
-                store,
-                "--monthly-root",
-                monthly,
-                "--summary",
-            ],
-            month,
-        )
-    )
-
-    _run(
-        _with_month(
-            [
-                python,
-                "scripts/build_chunks.py",
-                "--monthly-root",
-                monthly,
-                "--chunks-root",
-                chunks,
-                "--overwrite",
-            ],
-            month,
-        )
-    )
-    _run(
-        _with_month(
-            [
-                python,
-                "scripts/validate_chunks.py",
-                "--monthly-root",
-                monthly,
-                "--chunks-root",
-                chunks,
-                "--summary",
-            ],
-            month,
-        )
-    )
-
-    if month:
-        print(f"Ready for external LLM input: {_display_path(chunks_root / month)}")
-    else:
-        print(f"Ready for external LLM input: {_display_path(chunks_root / 'YYYY-MM')}")
 
 
 def _probe_image(image: Path) -> None:
-    _require_vlm_config()
-    image_path = _project_path(image)
-    _run([_python_executable(), "scripts/probe_lmstudio_vlm.py", "--image", str(image_path)])
+    paths = WorkflowPaths(
+        project_root=PROJECT_ROOT,
+        raw_root=PROJECT_ROOT / "raw",
+        store_root=PROJECT_ROOT / "store",
+        monthly_root=PROJECT_ROOT / "monthly",
+        chunks_root=PROJECT_ROOT / "llm_chunks",
+    )
+    run_action("probe", paths, WorkflowOptions(image=image))
 
 
 def _retry_failed_images(
@@ -296,23 +137,18 @@ def _retry_failed_images(
     rounds: int,
     workers: int,
 ) -> None:
-    if provider == "lmstudio":
-        _require_vlm_config(include_retry=True)
-
-    command = [
-        _python_executable(),
-        "scripts/retry_failed_images.py",
-        "--store-root",
-        str(store_root),
-        "--provider",
-        provider,
-        "--rounds",
-        str(rounds),
-    ]
-    command = _with_month(command, month)
-    if workers > 1:
-        command.extend(["--workers", str(workers)])
-    _run(command)
+    paths = WorkflowPaths(
+        project_root=PROJECT_ROOT,
+        raw_root=PROJECT_ROOT / "raw",
+        store_root=store_root,
+        monthly_root=PROJECT_ROOT / "monthly",
+        chunks_root=PROJECT_ROOT / "llm_chunks",
+    )
+    run_action(
+        "retry",
+        paths,
+        WorkflowOptions(provider=provider, month=month, rounds=rounds, workers=workers),
+    )
 
 
 def main() -> None:
@@ -361,16 +197,19 @@ def main() -> None:
     store_root = _project_path(args.store_root)
     monthly_root = _project_path(args.monthly_root)
     chunks_root = _project_path(args.chunks_root)
+    paths = WorkflowPaths(
+        project_root=PROJECT_ROOT,
+        raw_root=raw_root,
+        store_root=store_root,
+        monthly_root=monthly_root,
+        chunks_root=chunks_root,
+    )
 
     if action in {"first", "daily"}:
-        _build_chunks_from_raw(
-            raw_root=raw_root,
-            store_root=store_root,
-            monthly_root=monthly_root,
-            chunks_root=chunks_root,
-            provider=provider or "lmstudio",
-            month=month,
-            workers=args.workers,
+        run_action(
+            action,
+            paths,
+            WorkflowOptions(provider=provider or "lmstudio", month=month, workers=args.workers),
         )
         return
 
@@ -379,16 +218,19 @@ def main() -> None:
         if image is None:
             print("--image is required for probe.", file=sys.stderr)
             raise SystemExit(2)
-        _probe_image(image)
+        run_action("probe", paths, WorkflowOptions(image=image))
         return
 
     if action == "retry":
-        _retry_failed_images(
-            store_root=store_root,
-            provider=provider or "lmstudio",
-            month=month,
-            rounds=args.rounds,
-            workers=args.workers,
+        run_action(
+            "retry",
+            paths,
+            WorkflowOptions(
+                provider=provider or "lmstudio",
+                month=month,
+                rounds=args.rounds,
+                workers=args.workers,
+            ),
         )
         return
 

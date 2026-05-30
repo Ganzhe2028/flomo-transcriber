@@ -152,7 +152,23 @@ cmd /c npm install
 cmd /c npm run tauri dev
 ```
 
-On Windows, Tauri requires Rust/Cargo, Microsoft C++ Build Tools, and WebView2. This first GUI version calls the local Python environment and the existing `scripts/guide.py`; a Windows installer and Python sidecar are reserved for the next phase.
+On Windows, Tauri requires Rust/Cargo, Microsoft C++ Build Tools, and WebView2. In development mode, the GUI falls back to local Python if the sidecar has not been built yet; installed builds prefer the bundled sidecar.
+
+### Windows Installer
+
+The first installer target is an NSIS `setup.exe`. Code signing, automatic updates, and Microsoft Store publishing are not included in this phase. Unsigned installers may trigger a Windows SmartScreen warning.
+
+Build prerequisites:
+
+```bat
+pip install -e .[dev,gui]
+cd gui
+cmd /c npm install
+cmd /c npm run sidecar
+cmd /c npm run tauri:build:nsis
+```
+
+The installer is written under `gui/src-tauri/target/release/bundle/nsis/`. It must not include real `raw/`, `store/`, `monthly/`, `llm_chunks/`, `reports/`, or `.env` data.
 
 ## Folders and Outputs
 
@@ -411,6 +427,15 @@ GUI frontend check:
 ```bat
 cd gui
 cmd /c npm run build
+```
+
+GUI packaging check:
+
+```bat
+pip install -e .[gui]
+cd gui
+cmd /c npm run sidecar
+cmd /c npm run tauri:build:nsis
 ```
 
 Makefile shortcuts:

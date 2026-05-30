@@ -18,6 +18,10 @@ __pycache__/
 /gui/node_modules/
 /gui/dist/
 /gui/src-tauri/target/
+/gui/src-tauri/binaries/*
+!/gui/src-tauri/binaries/.gitkeep
+/gui/src-tauri/pyinstaller-build/
+/gui/src-tauri/pyinstaller-spec/
 
 /raw/*
 !/raw/.gitkeep

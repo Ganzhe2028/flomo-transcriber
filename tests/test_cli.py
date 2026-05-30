@@ -1070,3 +1070,42 @@ def test_guide_script_retry_action_uses_retry_flow(tmp_path: Path) -> None:
 
     assert guide.returncode == 0, guide.stdout + guide.stderr
     assert "Remaining failed: 0" in guide.stdout
+
+
+def test_flomo_sidecar_mock_first_run_builds_chunks(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    raw_root = build_sample_raw(tmp_path / "raw")
+    store_root = tmp_path / "store"
+    monthly_root = tmp_path / "monthly"
+    chunks_root = tmp_path / "llm_chunks"
+
+    sidecar = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "flomo_sidecar.py"),
+            "--action",
+            "first",
+            "--provider",
+            "mock",
+            "--project-root",
+            str(tmp_path),
+            "--raw-root",
+            str(raw_root),
+            "--store-root",
+            str(store_root),
+            "--monthly-root",
+            str(monthly_root),
+            "--chunks-root",
+            str(chunks_root),
+            "--month",
+            "2026-03",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=repo_root,
+    )
+
+    assert sidecar.returncode == 0, sidecar.stdout + sidecar.stderr
+    assert "Ready for external LLM input" in sidecar.stdout
+    assert (chunks_root / "2026-03" / "2026-03-0001.json").exists()

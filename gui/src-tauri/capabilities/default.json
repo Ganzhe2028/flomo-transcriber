@@ -3,5 +3,19 @@
   "identifier": "default",
   "description": "Default permissions for the flomo-transcriber desktop GUI",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:open"]
+  "permissions": [
+    "core:default",
+    "dialog:open",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/flomo-sidecar",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    "shell:allow-kill"
+  ]
 }

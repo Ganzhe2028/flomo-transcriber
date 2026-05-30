@@ -10,6 +10,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_shell::{
+    process::{CommandChild, CommandEvent},
+    ShellExt,
+};
 
 const ENV_KEYS: [&str; 5] = [
     "FLOMO_VLM_BASE_URL",
@@ -26,8 +30,13 @@ struct WorkflowState {
 
 struct ActiveWorkflow {
     task_id: String,
-    pid: u32,
+    process: Option<ActiveProcess>,
     cancelling: bool,
+}
+
+enum ActiveProcess {
+    Sidecar(CommandChild),
+    Local { pid: u32 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +53,7 @@ struct AppSettings {
     vlm_timeout_seconds: String,
     vlm_max_tokens: String,
     env_exists: bool,
+    runtime_mode: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,8 +91,8 @@ struct WorkflowCompleted {
 }
 
 #[tauri::command]
-fn read_settings() -> Result<AppSettings, String> {
-    let project_root = project_root()?;
+fn read_settings(app: AppHandle) -> Result<AppSettings, String> {
+    let project_root = workspace_root(&app)?;
     let env_file = project_root.join(".env");
     let env = read_env_map(&env_file)?;
 
@@ -111,12 +121,13 @@ fn read_settings() -> Result<AppSettings, String> {
             .cloned()
             .unwrap_or_else(|| "4096".to_string()),
         env_exists: env_file.exists(),
+        runtime_mode: runtime_mode(&app),
     })
 }
 
 #[tauri::command]
-fn save_settings(settings: AppSettings) -> Result<(), String> {
-    let env_file = normalize_env_file(&settings.env_file)?;
+fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
+    let env_file = normalize_env_file(&app, &settings.env_file)?;
     let updates = env_updates_from_settings(&settings);
     write_env_file(&env_file, &updates)
 }
@@ -135,9 +146,76 @@ fn run_workflow(
     }
 
     validate_request(&request)?;
-    let project_root = project_root()?;
-    let (program, args) = build_command(&request);
-    let command_text = display_command(&program, &args);
+    let project_root = workspace_root(&app)?;
+    let sidecar_args = build_sidecar_args(&request, &project_root);
+    let command_text = display_command("flomo-sidecar", &sidecar_args);
+
+    if let Ok(sidecar_command) = app.shell().sidecar("flomo-sidecar") {
+        let (mut rx, child) = sidecar_command
+            .args(sidecar_args)
+            .spawn()
+            .map_err(|error| format!("无法启动内置处理程序：{error}"))?;
+
+        let task_id = new_task_id();
+        guarded.active = Some(ActiveWorkflow {
+            task_id: task_id.clone(),
+            process: Some(ActiveProcess::Sidecar(child)),
+            cancelling: false,
+        });
+        drop(guarded);
+
+        let wait_app = app.clone();
+        let wait_task_id = task_id.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut code: Option<i32> = None;
+            let mut status = "failed".to_string();
+            while let Some(event) = rx.recv().await {
+                match event {
+                    CommandEvent::Stdout(line) => {
+                        emit_output(&wait_app, &wait_task_id, "stdout", &line);
+                    }
+                    CommandEvent::Stderr(line) => {
+                        emit_output(&wait_app, &wait_task_id, "stderr", &line);
+                    }
+                    CommandEvent::Error(error) => {
+                        let _ = wait_app.emit(
+                            "workflow-output",
+                            WorkflowOutput {
+                                task_id: wait_task_id.clone(),
+                                stream: "stderr".to_string(),
+                                line: error,
+                            },
+                        );
+                    }
+                    CommandEvent::Terminated(payload) => {
+                        code = payload.code;
+                        status = if code == Some(0) { "success" } else { "failed" }.to_string();
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+
+            finish_workflow(wait_app, wait_task_id, status, code);
+        });
+
+        return Ok(WorkflowStarted {
+            task_id,
+            command: command_text,
+        });
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        return Err("内置处理程序缺失，请重新安装应用。".to_string());
+    }
+
+    #[cfg(debug_assertions)]
+    let (program, args, command_text) = {
+        let (program, args) = build_local_python_command(&request, &project_root);
+        let command_text = display_command(&program, &args);
+        (program, args, command_text)
+    };
 
     let mut child = Command::new(&program)
         .args(&args)
@@ -145,13 +223,13 @@ fn run_workflow(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| format!("无法启动 Python：{error}"))?;
+        .map_err(|error| format!("无法启动本机 Python：{error}"))?;
 
     let task_id = new_task_id();
     let pid = child.id();
     guarded.active = Some(ActiveWorkflow {
         task_id: task_id.clone(),
-        pid,
+        process: Some(ActiveProcess::Local { pid }),
         cancelling: false,
     });
     drop(guarded);
@@ -163,37 +241,12 @@ fn run_workflow(
         spawn_output_reader(app.clone(), task_id.clone(), "stderr", stderr);
     }
 
-    let wait_state = app.state::<Mutex<WorkflowState>>();
     let wait_app = app.clone();
     let wait_task_id = task_id.clone();
     thread::spawn(move || {
-        let result = child.wait();
-        let code = result.ok().and_then(|status| status.code());
-        let mut status = if code == Some(0) { "success" } else { "failed" }.to_string();
-
-        if let Ok(mut guarded) = wait_state.lock() {
-            if let Some(active) = &guarded.active {
-                if active.task_id == wait_task_id && active.cancelling {
-                    status = "cancelled".to_string();
-                }
-            }
-            if guarded
-                .active
-                .as_ref()
-                .is_some_and(|active| active.task_id == wait_task_id)
-            {
-                guarded.active = None;
-            }
-        }
-
-        let _ = wait_app.emit(
-            "workflow-completed",
-            WorkflowCompleted {
-                task_id: wait_task_id,
-                status,
-                code,
-            },
-        );
+        let code = child.wait().ok().and_then(|status| status.code());
+        let status = if code == Some(0) { "success" } else { "failed" }.to_string();
+        finish_workflow(wait_app, wait_task_id, status, code);
     });
 
     Ok(WorkflowStarted {
@@ -207,7 +260,7 @@ fn cancel_workflow(
     state: State<'_, Mutex<WorkflowState>>,
     task_id: String,
 ) -> Result<(), String> {
-    let pid = {
+    let process = {
         let mut guarded = state
             .lock()
             .map_err(|_| "无法读取当前任务状态。".to_string())?;
@@ -219,10 +272,16 @@ fn cancel_workflow(
             return Err("任务已经变化，无法停止。".to_string());
         }
         active.cancelling = true;
-        active.pid
+        active.process.take()
     };
 
-    kill_process(pid)
+    match process {
+        Some(ActiveProcess::Sidecar(child)) => child
+            .kill()
+            .map_err(|error| format!("停止任务失败：{error}")),
+        Some(ActiveProcess::Local { pid }) => kill_process(pid),
+        None => Ok(()),
+    }
 }
 
 #[tauri::command]
@@ -262,6 +321,7 @@ fn open_path(path: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
         .manage(Mutex::new(WorkflowState::default()))
         .invoke_handler(tauri::generate_handler![
             read_settings,
@@ -274,7 +334,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-fn project_root() -> Result<PathBuf, String> {
+fn dev_project_root() -> Result<PathBuf, String> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest
         .parent()
@@ -283,12 +343,39 @@ fn project_root() -> Result<PathBuf, String> {
         .ok_or_else(|| "无法定位项目根目录。".to_string())
 }
 
-fn normalize_env_file(path: &str) -> Result<PathBuf, String> {
+fn workspace_root(app: &AppHandle) -> Result<PathBuf, String> {
+    #[cfg(debug_assertions)]
+    {
+        return dev_project_root();
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        let root = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| format!("无法定位应用数据目录：{error}"))?;
+        fs::create_dir_all(&root).map_err(|error| format!("无法创建应用数据目录：{error}"))?;
+        Ok(root)
+    }
+}
+
+fn runtime_mode(app: &AppHandle) -> String {
+    if app.shell().sidecar("flomo-sidecar").is_ok() {
+        "内置 sidecar".to_string()
+    } else if cfg!(debug_assertions) {
+        "开发模式：本机 Python".to_string()
+    } else {
+        "sidecar 缺失".to_string()
+    }
+}
+
+fn normalize_env_file(app: &AppHandle, path: &str) -> Result<PathBuf, String> {
     let requested = PathBuf::from(path);
     if requested.is_absolute() {
         return Ok(requested);
     }
-    Ok(project_root()?.join(requested))
+    Ok(workspace_root(app)?.join(requested))
 }
 
 fn read_env_map(path: &Path) -> Result<HashMap<String, String>, String> {
@@ -411,7 +498,54 @@ fn validate_request(request: &WorkflowRequest) -> Result<(), String> {
     Ok(())
 }
 
-fn build_command(request: &WorkflowRequest) -> (String, Vec<String>) {
+fn build_sidecar_args(request: &WorkflowRequest, project_root: &Path) -> Vec<String> {
+    let mut args = vec![
+        "--action".to_string(),
+        request.action.clone(),
+        "--project-root".to_string(),
+        project_root.to_string_lossy().into_owned(),
+        "--env-file".to_string(),
+        request.env_file.clone(),
+    ];
+
+    if matches!(request.action.as_str(), "first" | "daily" | "retry") {
+        args.extend(["--provider".to_string(), request.provider.clone()]);
+    }
+
+    args.extend([
+        "--raw-root".to_string(),
+        request.raw_root.clone(),
+        "--store-root".to_string(),
+        request.store_root.clone(),
+        "--monthly-root".to_string(),
+        request.monthly_root.clone(),
+        "--chunks-root".to_string(),
+        request.chunks_root.clone(),
+    ]);
+
+    if let Some(month) = request
+        .month
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        args.extend(["--month".to_string(), month.to_string()]);
+    }
+
+    if request.action == "probe" {
+        if let Some(image) = request.image.as_ref() {
+            args.extend(["--image".to_string(), image.clone()]);
+        }
+    }
+
+    if request.action == "retry" {
+        args.extend(["--rounds".to_string(), request.rounds.to_string()]);
+    }
+
+    args
+}
+
+fn build_local_python_command(request: &WorkflowRequest, project_root: &Path) -> (String, Vec<String>) {
     let mut args = vec![
         "scripts/guide.py".to_string(),
         "--action".to_string(),
@@ -454,10 +588,12 @@ fn build_command(request: &WorkflowRequest) -> (String, Vec<String>) {
         args.extend(["--rounds".to_string(), request.rounds.to_string()]);
     }
 
-    (
-        std::env::var("PYTHON").unwrap_or_else(|_| "python".to_string()),
-        args,
-    )
+    let program = std::env::var("PYTHON").unwrap_or_else(|_| "python".to_string());
+    let guide_path = project_root.join("scripts").join("guide.py");
+    if guide_path.exists() {
+        args[0] = guide_path.to_string_lossy().into_owned();
+    }
+    (program, args)
 }
 
 fn display_command(program: &str, args: &[String]) -> String {
@@ -472,6 +608,50 @@ fn display_command(program: &str, args: &[String]) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn emit_output(app: &AppHandle, task_id: &str, stream: &str, bytes: &[u8]) {
+    let line = String::from_utf8_lossy(bytes).trim_end().to_string();
+    let _ = app.emit(
+        "workflow-output",
+        WorkflowOutput {
+            task_id: task_id.to_string(),
+            stream: stream.to_string(),
+            line,
+        },
+    );
+}
+
+fn finish_workflow(
+    app: AppHandle,
+    task_id: String,
+    mut status: String,
+    code: Option<i32>,
+) {
+    let state = app.state::<Mutex<WorkflowState>>();
+    if let Ok(mut guarded) = state.lock() {
+        if let Some(active) = &guarded.active {
+            if active.task_id == task_id && active.cancelling {
+                status = "cancelled".to_string();
+            }
+        }
+        if guarded
+            .active
+            .as_ref()
+            .is_some_and(|active| active.task_id == task_id)
+        {
+            guarded.active = None;
+        }
+    }
+
+    let _ = app.emit(
+        "workflow-completed",
+        WorkflowCompleted {
+            task_id,
+            status,
+            code,
+        },
+    );
 }
 
 fn spawn_output_reader<R>(app: AppHandle, task_id: String, stream: &'static str, reader: R)
@@ -535,6 +715,7 @@ mod tests {
             vlm_timeout_seconds: "180".to_string(),
             vlm_max_tokens: "4096".to_string(),
             env_exists: true,
+            runtime_mode: "test".to_string(),
         }
     }
 
@@ -574,7 +755,7 @@ mod tests {
             rounds: 3,
         };
 
-        let (_, args) = build_command(&request);
+        let args = build_sidecar_args(&request, Path::new("project"));
         assert!(has_arg_pair(&args, "--action", "first"));
         assert!(has_arg_pair(&args, "--provider", "mock"));
         assert!(has_arg_pair(&args, "--month", "2026-05"));
@@ -595,7 +776,7 @@ mod tests {
             rounds: 3,
         };
 
-        let (_, args) = build_command(&request);
+        let args = build_sidecar_args(&request, Path::new("project"));
         assert!(has_arg_pair(&args, "--action", "probe"));
         assert!(has_arg_pair(&args, "--image", "store/images/example.png"));
         assert!(!args.iter().any(|arg| arg == "--provider"));

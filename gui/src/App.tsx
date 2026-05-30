@@ -34,6 +34,7 @@ type AppSettings = {
   vlm_timeout_seconds: string;
   vlm_max_tokens: string;
   env_exists: boolean;
+  runtime_mode: string;
 };
 
 type WorkflowRequest = {
@@ -85,6 +86,7 @@ const defaultSettings: AppSettings = {
   vlm_timeout_seconds: "180",
   vlm_max_tokens: "4096",
   env_exists: false,
+  runtime_mode: "",
 };
 
 const actionMeta: Record<
@@ -315,6 +317,10 @@ function App() {
           <div className={`statusPill ${configState.tone}`}>
             <Activity size={16} aria-hidden="true" />
             <span>{configState.label}</span>
+          </div>
+          <div className="runtimeInfo">
+            <span>运行环境</span>
+            <strong>{settings.runtime_mode || "检测中"}</strong>
           </div>
         </aside>
 
