@@ -277,6 +277,8 @@ Visual descriptions cover visible non-text content such as photos, objects, scen
 
 Image enrichment failures do not stop the whole run. Each completed image is saved immediately. Records that still fail keep `status=failed` and the final error message. The next run skips successful records and continues with failed or unfinished records.
 
+On Windows, if another app is using `store/image.enriched.jsonl`, saving briefly retries before failing. If it still fails, close the app that is viewing or editing that file and rerun; the latest attempted output is kept at `store/image.enriched.jsonl.tmp`.
+
 To rerun successful records:
 
 ```bash

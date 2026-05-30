@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import time
 from typing import TYPE_CHECKING, Any, Protocol, TypeGuard
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
+
+
+_ATOMIC_REPLACE_RETRY_DELAYS_SECONDS = (0.05, 0.1, 0.2, 0.5, 1.0)
 
 
 class SupportsToDict(Protocol):
@@ -49,6 +53,28 @@ def read_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _replace_with_retries(source_path: Path, destination_path: Path) -> None:
+    last_error: PermissionError | None = None
+    for attempt in range(len(_ATOMIC_REPLACE_RETRY_DELAYS_SECONDS) + 1):
+        try:
+            source_path.replace(destination_path)
+            return
+        except PermissionError as exc:
+            last_error = exc
+            if attempt == len(_ATOMIC_REPLACE_RETRY_DELAYS_SECONDS):
+                break
+            time.sleep(_ATOMIC_REPLACE_RETRY_DELAYS_SECONDS[attempt])
+
+    if last_error is None:  # pragma: no cover - defensive guard
+        raise PermissionError(f"Could not replace {destination_path} with {source_path}")
+
+    raise PermissionError(
+        "Could not update "
+        f"{destination_path}. Close any app or script that is using this file and rerun. "
+        f"The latest attempted output was kept at {source_path}."
+    ) from last_error
+
+
 def write_jsonl(path: Path, records: Iterable[object], *, atomic: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     target_path = path.with_name(f"{path.name}.tmp") if atomic else path
@@ -56,7 +82,7 @@ def write_jsonl(path: Path, records: Iterable[object], *, atomic: bool = False) 
         for record in records:
             handle.write(json.dumps(to_plain_dict(record), ensure_ascii=False) + "\n")
     if atomic:
-        target_path.replace(path)
+        _replace_with_retries(target_path, path)
 
 
 def write_json(path: Path, payload: dict[str, object]) -> None:

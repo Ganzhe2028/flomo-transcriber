@@ -277,6 +277,8 @@ python scripts/enrich_images.py --store-root store --provider lmstudio --month 2
 
 图片增强失败不会中断整个流程。每张图片完成后都会立刻保存；仍失败的图片会保留 `status=failed` 和失败原因。再次运行会跳过已成功记录，继续处理失败或未完成记录。
 
+Windows 上如果 `store/image.enriched.jsonl` 正被其他程序占用，保存时会短暂重试。仍失败时，关闭正在查看或编辑这个文件的程序后重跑；最新一次尝试写入的内容会保留在 `store/image.enriched.jsonl.tmp`。
+
 需要重跑成功项时加：
 
 ```bash
