@@ -5,7 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "dialog:open",
+    "dialog:allow-open",
     {
       "identifier": "shell:allow-spawn",
       "allow": [

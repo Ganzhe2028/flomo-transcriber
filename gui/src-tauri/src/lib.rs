@@ -2,12 +2,16 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs,
-    io::{BufRead, BufReader},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
     sync::Mutex,
-    thread,
     time::{SystemTime, UNIX_EPOCH},
+};
+#[cfg(debug_assertions)]
+use std::{
+    io::{BufRead, BufReader},
+    process::Stdio,
+    thread,
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::{
@@ -36,6 +40,7 @@ struct ActiveWorkflow {
 
 enum ActiveProcess {
     Sidecar(CommandChild),
+    #[cfg(debug_assertions)]
     Local { pid: u32 },
 }
 
@@ -211,48 +216,46 @@ fn run_workflow(
     }
 
     #[cfg(debug_assertions)]
-    let (program, args, command_text) = {
+    {
         let (program, args) = build_local_python_command(&request, &project_root);
         let command_text = display_command(&program, &args);
-        (program, args, command_text)
-    };
+        let mut child = Command::new(&program)
+            .args(&args)
+            .current_dir(&project_root)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("无法启动本机 Python：{error}"))?;
 
-    let mut child = Command::new(&program)
-        .args(&args)
-        .current_dir(&project_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("无法启动本机 Python：{error}"))?;
+        let task_id = new_task_id();
+        let pid = child.id();
+        guarded.active = Some(ActiveWorkflow {
+            task_id: task_id.clone(),
+            process: Some(ActiveProcess::Local { pid }),
+            cancelling: false,
+        });
+        drop(guarded);
 
-    let task_id = new_task_id();
-    let pid = child.id();
-    guarded.active = Some(ActiveWorkflow {
-        task_id: task_id.clone(),
-        process: Some(ActiveProcess::Local { pid }),
-        cancelling: false,
-    });
-    drop(guarded);
+        if let Some(stdout) = child.stdout.take() {
+            spawn_output_reader(app.clone(), task_id.clone(), "stdout", stdout);
+        }
+        if let Some(stderr) = child.stderr.take() {
+            spawn_output_reader(app.clone(), task_id.clone(), "stderr", stderr);
+        }
 
-    if let Some(stdout) = child.stdout.take() {
-        spawn_output_reader(app.clone(), task_id.clone(), "stdout", stdout);
+        let wait_app = app.clone();
+        let wait_task_id = task_id.clone();
+        thread::spawn(move || {
+            let code = child.wait().ok().and_then(|status| status.code());
+            let status = if code == Some(0) { "success" } else { "failed" }.to_string();
+            finish_workflow(wait_app, wait_task_id, status, code);
+        });
+
+        Ok(WorkflowStarted {
+            task_id,
+            command: command_text,
+        })
     }
-    if let Some(stderr) = child.stderr.take() {
-        spawn_output_reader(app.clone(), task_id.clone(), "stderr", stderr);
-    }
-
-    let wait_app = app.clone();
-    let wait_task_id = task_id.clone();
-    thread::spawn(move || {
-        let code = child.wait().ok().and_then(|status| status.code());
-        let status = if code == Some(0) { "success" } else { "failed" }.to_string();
-        finish_workflow(wait_app, wait_task_id, status, code);
-    });
-
-    Ok(WorkflowStarted {
-        task_id,
-        command: command_text,
-    })
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -279,6 +282,7 @@ fn cancel_workflow(
         Some(ActiveProcess::Sidecar(child)) => child
             .kill()
             .map_err(|error| format!("停止任务失败：{error}")),
+        #[cfg(debug_assertions)]
         Some(ActiveProcess::Local { pid }) => kill_process(pid),
         None => Ok(()),
     }
@@ -334,6 +338,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+#[cfg(debug_assertions)]
 fn dev_project_root() -> Result<PathBuf, String> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest
@@ -343,7 +348,7 @@ fn dev_project_root() -> Result<PathBuf, String> {
         .ok_or_else(|| "无法定位项目根目录。".to_string())
 }
 
-fn workspace_root(app: &AppHandle) -> Result<PathBuf, String> {
+fn workspace_root(_app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(debug_assertions)]
     {
         return dev_project_root();
@@ -351,7 +356,7 @@ fn workspace_root(app: &AppHandle) -> Result<PathBuf, String> {
 
     #[cfg(not(debug_assertions))]
     {
-        let root = app
+        let root = _app
             .path()
             .app_data_dir()
             .map_err(|error| format!("无法定位应用数据目录：{error}"))?;
@@ -545,6 +550,7 @@ fn build_sidecar_args(request: &WorkflowRequest, project_root: &Path) -> Vec<Str
     args
 }
 
+#[cfg(debug_assertions)]
 fn build_local_python_command(request: &WorkflowRequest, project_root: &Path) -> (String, Vec<String>) {
     let mut args = vec![
         "scripts/guide.py".to_string(),
@@ -654,6 +660,7 @@ fn finish_workflow(
     );
 }
 
+#[cfg(debug_assertions)]
 fn spawn_output_reader<R>(app: AppHandle, task_id: String, stream: &'static str, reader: R)
 where
     R: std::io::Read + Send + 'static,
@@ -681,6 +688,7 @@ fn new_task_id() -> String {
     format!("workflow-{millis}")
 }
 
+#[cfg(debug_assertions)]
 fn kill_process(pid: u32) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     let status = Command::new("taskkill")
