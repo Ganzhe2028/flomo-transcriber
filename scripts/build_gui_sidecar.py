@@ -69,6 +69,7 @@ def main() -> None:
             "PyInstaller",
             "--clean",
             "--noconfirm",
+            "--noconsole",
             "--onefile",
             "--name",
             SIDECAR_NAME,
