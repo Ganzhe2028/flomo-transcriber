@@ -32,17 +32,29 @@ def to_plain_dict(value: object) -> dict[str, object]:
     raise TypeError(f"Cannot convert {type(value).__name__} to dict")
 
 
+_UNESCAPED_LINE_SEPARATORS = "\u2028\u2029"
+
+
+def _sanitize_jsonl_value(json_str: str) -> str:
+    """Replace Unicode line separators (\u2028, \u2029) with their
+    escaped forms so that line-based JSONL parsing does not split
+    a single record into multiple lines."""
+    return json_str.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
+
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
 
     records: list[dict[str, Any]] = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        if raw_line.strip():
-            payload = json.loads(raw_line)
-            if not isinstance(payload, dict):
-                raise ValueError(f"JSONL row is not an object: {path}")
-            records.append(payload)
+    for raw_line in path.read_text(encoding="utf-8").split("\n"):
+        line = raw_line.rstrip("\r")
+        if not line.strip():
+            continue
+        payload = json.loads(line)
+        if not isinstance(payload, dict):
+            raise ValueError(f"JSONL row is not an object: {path}")
+        records.append(payload)
     return records
 
 
@@ -80,7 +92,8 @@ def write_jsonl(path: Path, records: Iterable[object], *, atomic: bool = False) 
     target_path = path.with_name(f"{path.name}.tmp") if atomic else path
     with open(target_path, "w", encoding="utf-8") as handle:
         for record in records:
-            handle.write(json.dumps(to_plain_dict(record), ensure_ascii=False) + "\n")
+            json_str = json.dumps(to_plain_dict(record), ensure_ascii=False)
+            handle.write(_sanitize_jsonl_value(json_str) + "\n")
     if atomic:
         _replace_with_retries(target_path, path)
 

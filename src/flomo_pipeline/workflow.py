@@ -77,8 +77,8 @@ def load_env_file(path: Path) -> list[str]:
         return []
 
     loaded: list[str] = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
+    for raw_line in path.read_text(encoding="utf-8").split("\n"):
+        line = raw_line.rstrip("\r")
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
@@ -359,7 +359,8 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     records: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8").split("\n"):
+        line = line.rstrip("\r")
         if line.strip():
             records.append(json.loads(line))
     return records

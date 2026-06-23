@@ -15,10 +15,10 @@
 - **GUI 全面重设计**：`gui/src/styles.css`、`gui/src/App.tsx` 用 Agentic 设计系统重写，深海军蓝 `#0b1020` 底色 + 冷蓝 `#60a5fa` accent，8pt 严格网格间距体系，不再沿用旧版绿灰调。
 - **新增亮色/暗色主题切换**：侧栏右上角 ☀️/🌙 图标按钮一键切换，偏好通过 `localStorage` 持久化。亮色主题使用 `#f8fafc` 底色 + `#3b82f6` accent 的浅色变体。
 - **控制面板布局重排**：高频操作提权——运行设置（月份/provider/重试轮数/目标图片）置顶，48px 大号「开始运行」按钮紧随其后，路径配置和 LM Studio 配置分别用折叠菜单收起（默认折叠），低频的「保存配置」按钮弱化到底部。
-- **日志面板增加终端风格**：新增 macOS 风格红·黄·绿终端圆点，日志行淡入动画，JetBrains Mono 等宽字体。
+- **日志面板增加终端风格**：日志行淡入动画，JetBrains Mono 等宽字体。移除 macOS 风格终端圆点装饰块。
 - **按钮交互增强**：4 种按钮变体全部增加 `:active` 按压态（scale 压缩 + 颜色变暗）、`:focus-visible` 可见焦点环、`aria-current="true"` 当前操作标记，键盘可导航性显著提升。
 - **表单无障碍改进**：所有 `<span>` 标签替换为语义化的 `<label for="...">`，屏幕阅读器可正确关联标签与输入框。
-- **CSS 组件体系**：btn-primary / btn-secondary / btn-icon / btn-danger 四类按钮变体 + 统一状态（hover/active/disabled），collapsibleSection 折叠菜单组件，terminalBar 终端栏组件，pulse/saveFlash 动画，全套 `--space-*` / `--radius-*` CSS 自定义属性。
+- **CSS 组件体系**：btn-primary / btn-secondary / btn-icon / btn-danger 四类按钮变体 + 统一状态（hover/active/disabled），collapsibleSection 折叠菜单组件，pulse/saveFlash 动画，全套 `--space-*` / `--radius-*` CSS 自定义属性。
 - **所有现有 Tauri 逻辑零改动**：`invoke`、`listen`、`dialog`、`readTextFile`、`writeTextFile` 全部保留原样，仅组件布局和样式变更新。
 
 ### 验证结果
@@ -26,6 +26,12 @@
 - `cd gui && npm run build` 通过：`tsc` 类型检查 + `vite build` 零错误。
 - 四个操作（首次生成/日常更新/探测图片/重试失败）交互逻辑与原版完全一致。
 - 侧栏操作切换、provider 切换触发状态胶囊更新，日志模拟输出 4 Stage 流程，功能不变。
+
+### 2026-06-24 修正
+
+- **修复日志面板撑爆窗口高度**：`html`、`body`、`.shell` 从 `min-height: 100vh` 改为 `height: 100vh` + `overflow: hidden`，彻底锁死视口高度，日志输出再多也不会把窗口撑高。
+- **移除终端圆点装饰**：删除 `.terminalBar` 组件及红·黄·绿圆点，终端面板更简洁。
+- **设计原型同步**：`flomo-redesign.html` 同步以上两项修正。
 
 ## 2026-05-01 - 0.4.0 级别更新
 

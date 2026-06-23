@@ -133,9 +133,9 @@ def load_jsonl_for_validation(
         )
         return records
 
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        line = raw_line.strip()
-        if not line:
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").split("\n"), start=1):
+        line = raw_line.rstrip("\r")
+        if not line.strip():
             continue
         try:
             payload = json.loads(line)
