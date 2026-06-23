@@ -1,8 +1,76 @@
 # AGENTS.md
 
+**Generated:** 2026-06-24 · **Commit:** `dcebf5c` · **Branch:** `main`
+
 本文件给接手本仓库的 AI Agent 使用。改动前先确认当前任务的完成标准，改动后必须验证。
 
-## 先读
+## OVERVIEW
+
+Flomo 导出 → LLM 可读 chunk 的本地 Python 流水线。5 个 stage，纯本地文件，无数据库，无 Web 服务。栈：Python ≥3.11 + BeautifulSoup4 + Pillow + LM Studio VLM（可选）。
+
+## STRUCTURE
+
+```
+flomo-transcriber/
+├── src/flomo_pipeline/          # ★ Python 主包 (import: flomo_pipeline)
+│   ├── workflow.py              #   核心编排器: run_action(), 4 种操作
+│   ├── common/                  #   共享: frozen dataclass, JSONL I/O, ValidationReport
+│   ├── extract/                 #   Stage 1: Flomo HTML → raw JSONL (4 files, 664 lines)
+│   ├── enrich/                  #   Stage 2: VLM 图片增强 (10 files, 1494 lines) ★ 最复杂
+│   │   └── providers/           #     LM Studio / mock provider 工厂
+│   ├── merge/                   #   Stage 3: 按月合并 (4 files, 515 lines)
+│   ├── chunk/                   #   Stage 4: LLM chunk 组装, 不调模型 (5 files, 795 lines)
+│   ├── report/                  #   Stage 5: 可选 LLM 报告 (8 files, 653 lines)
+│   │   └── providers/           #     LM Studio / mock report provider 工厂
+│   └── preview/                 #   死目录 — 无 .py 文件, 无 __init__.py
+├── scripts/                     # CLI 入口 (17 .py): guide.py ★ 主入口, stage 脚本, validator 脚本
+├── tests/                       # pytest (10 files, 70 tests, 2620 lines) — no __init__.py
+├── gui/                         # Tauri v2 桌面 GUI (React 18 + Rust, 独立构建)
+├── raw/    store/    monthly/   # [gitignored] 流水线数据目录
+├── llm_chunks/    reports/      # [gitignored] 最终输出
+├── pyproject.toml               # hatchling build, ruff/mypy/pytest 配置
+└── Makefile                     # 18 个便捷 target
+```
+
+## WHERE TO LOOK
+
+| Task | Location | Notes |
+|------|----------|-------|
+| 用户入口 / 工作流 | `scripts/guide.py` → `src/flomo_pipeline/workflow.py` | 4 种操作: first / daily / probe / retry |
+| Stage 1: HTML 解析 | `src/flomo_pipeline/extract/parser.py` | `FlomoParser.parse_all()`, `_html_to_markdown()` |
+| Stage 2: VLM 调用 | `src/flomo_pipeline/enrich/providers/lmstudio_openai.py` | 整图 → 切片 fallback, retry 逻辑 |
+| Stage 2: 图片切片 | `src/flomo_pipeline/enrich/image_slicer.py` | `create_image_slices()`, 长截图降级 |
+| Stage 3: 月度合并 | `src/flomo_pipeline/merge/runner.py` | `MonthlyMergeRunner.run()` |
+| Stage 4: chunk 装箱 | `src/flomo_pipeline/chunk/runner.py` | ~1200 tokens/chunk, memo 不可拆分 |
+| Stage 5: LLM 报告 | `src/flomo_pipeline/report/runner.py` | 可选 stage, 不在默认 guide.py flow 中 |
+| JSONL 读写 | `src/flomo_pipeline/common/io.py` | `write_jsonl(atomic=True)`, `read_jsonl()` |
+| 校验框架 | `src/flomo_pipeline/common/validation.py` | `Severity`, `Violation`, `ValidationReport` |
+| 数据模型 | `src/flomo_pipeline/common/models.py` | `MemoRecord`, `ImageRecord` (frozen dataclass) |
+| 测试入口 | `tests/conftest.py` | `sample_raw_root` fixture, `run_fake_lmstudio_server` |
+| GUI 后端 | `gui/src-tauri/src/lib.rs` | 5 个 Tauri command |
+| GUI 前端 | `gui/src/App.tsx` | React SPA, 4 操作 + settings |
+| 桌面打包 | `scripts/build_gui_sidecar.py` → `gui/` npm scripts | PyInstaller → NSIS |
+| 开源安全检查 | `scripts/check_open_source_readiness.py` | 数据泄露 / API key / 个人路径 |
+| Makefile 快捷入口 | `Makefile` | `make test`, `make enrich-lmstudio`, etc. |
+
+## CODE MAP
+
+| Symbol | Type | Location | Refs | Role |
+|--------|------|----------|------|------|
+| `run_action()` | function | `workflow.py:run_action` | 2 (guide.py, flomo_sidecar.py) | 核心编排入口 |
+| `WorkflowPaths` | frozen dataclass | `workflow.py:30` | — | 路径配置 |
+| `FlomoParser` | class | `extract/parser.py` | — | HTML → 结构化记录 |
+| `ImageEnrichmentRunner` | class | `enrich/runner.py` | 2 (scripts) | Stage 2 批处理引擎 |
+| `LMStudioEnrichmentProvider` | class | `enrich/providers/lmstudio_openai.py` | 1 (build_provider) | LM Studio VLM 适配器 |
+| `EnrichmentProvider` | Protocol | `enrich/provider.py:14` | 13 callers | VLM provider 接口 |
+| `MonthlyMergeRunner` | class | `merge/runner.py` | 1 (script) | Stage 3 合并引擎 |
+| `ChunkBuildRunner` | class | `chunk/runner.py` | 1 (script) | Stage 4 chunk 构建器 |
+| `ReportBuildRunner` | class | `report/runner.py` | 1 (script) | Stage 5 报告生成器 |
+| `ReportProvider` | Protocol | `report/provider.py` | — | LLM report provider 接口 |
+| `ValidationReport` | frozen dataclass | `common/validation.py` | all validators | 校验结果容器 |
+| `write_jsonl()` | function | `common/io.py` | all runners | 原子 JSONL 写入 |
+
+## 先读（Agent 接手时）
 
 1. `README.md` 或 `README.en.md`
 2. `pyproject.toml`
@@ -18,31 +86,90 @@
 - Stage 4 chunk：`monthly/YYYY-MM.enriched.jsonl -> llm_chunks/YYYY-MM/*.json`
 - Stage 5 report：`llm_chunks/YYYY-MM/*.json -> reports/YYYY-MM.report.*`
 
-`common/` 只放跨 stage 共享的基础工具，例如文件读写和校验报告。不要把 stage 专属业务规则搬进 `common/`。
+`common/` 只放跨 stage 共享的基础工具（文件读写、校验报告）。**不要把 stage 专属业务规则搬进 `common/`。**
 
 普通用户主入口是 `python scripts/guide.py`。单阶段脚本和 bat/sh 脚本保留给排错、高级参数和自动化使用。
 
-## 改动规则
+## CONVENTIONS
 
-- 真实 Flomo 导出、图片、生成的 JSONL、chunks、reports、日志和 `.env` 不得进入 Git。
-- Stage 1 raw JSONL 是事实层，下游不得改写。
-- 下游产物必须可以重新生成。
-- 路径字段保持相对路径。
-- 不静默丢弃 `failed` / `skipped` 图片。
-- 不在 Stage 4 调用 LLM。
-- 不默认重构无关 stage。
+**工具链**（`pyproject.toml` 统一配置，无独立 config 文件）：
+- **Python**: ≥3.11, `from __future__ import annotations` 全局使用
+- **Lint**: Ruff — line-length=100, rules: E/F/I/N/UP/B/SIM/TCH
+- **Type**: mypy `strict=true`, `explicit_package_bases=true`, mypy_path=["src"]
+- **Test**: pytest — testpaths=["tests"], pythonpath=["src"], 无标记, 无 coverage 插件
+- **Build**: hatchling, wheel target `packages=["src/flomo_pipeline"]`
+- **无** `.editorconfig`, `.pre-commit-config.yaml`, `ruff.toml`, `tox.ini`
+
+**代码风格**：
+- 公开名 `flomo-transcriber`, import 名 `flomo_pipeline`（向下兼容）
+- 所有数据模型使用 frozen dataclass
+- `to_plain_dict()` 是唯一序列化路径
+- JSONL 读用 `split("\n")` 而非 `splitlines()`（Unicode 行分隔符安全）
+- 每个 stage 都有 validator，遵循 `ValidationReport` 接口
+
+**测试模式**：
+- 10 个测试文件, 70 个测试函数
+- 无外部 test fixture 文件 — 所有测试数据用 `tmp_path` 程序生成
+- Mock 只用 pytest 内置 `monkeypatch` + fake provider 类，不用 `unittest.mock`
+- 集成测试集中在 `tests/test_cli.py`（subprocess 方式）
+- 调试时先跑相关 stage 测试文件, 交付前跑全量
+
+## ANTI-PATTERNS（改动规则）
+
+- 真实 Flomo 导出、图片、生成的 JSONL、chunks、reports、日志和 `.env` **不得进入 Git。**
+- Stage 1 raw JSONL 是事实层，**下游不得改写。**
+- 下游产物必须可以**重新生成**（删除后重跑得相同结果）。
+- 路径字段保持**相对路径**（POSIX 正斜杠）。
+- **不静默丢弃** `failed` / `skipped` 图片 — 保留在记录中带 status + error_message。
+- **不在 Stage 4 调用 LLM** — Stage 4 是纯文本组装。
+- **不默认重构无关 stage。**
+- **不把 common/ 当业务逻辑层** — 只放跨 stage 基础设施。
+- **不把 monthly/chunk/report 当 truth layer** — 都是可重新生成的派生输出。
+- 不在 Stage 2 处理视频/音频，除非明确新增对应 stage 设计。
+- **不在 GUI 前端直接调 Python** — 所有工作流走 Rust `invoke`。
+- **不在 GUI 安装包塞真实用户数据。**
+- **每次改动后必须更新 `UpdateLog.md`**，记录改动内容、原因和影响范围。
 - 开发后更新相关文档；如果没有相关文档，不需要主动新增，除非任务明确要求。
 
-## 验证
-
-按改动范围选择验证，交付前至少跑相关测试。
+## COMMANDS
 
 ```bash
-python -m pytest
-python -m mypy src
-python scripts/check_open_source_readiness.py
+# 测试与校验
+python -m pytest                                    # 全量测试
+python -m pytest tests/test_extract.py -v           # 单 stage 测试
+python -m mypy src                                  # 严格类型检查
+python scripts/check_open_source_readiness.py       # 开源安全检查（数据泄露审计）
+
+# 用户入口
+python scripts/guide.py                             # 交互式菜单
+python scripts/guide.py --action first --provider lmstudio --month 2025-12
+
+# 单 stage 排错（均支持 --month / --overwrite / --summary）
+python scripts/extract_raw.py --raw-root raw --store-root store
+python scripts/enrich_images.py --store-root store --provider lmstudio --month 2025-12 --workers 4
+python scripts/merge_monthly.py --store-root store --monthly-root monthly --month 2025-12
+python scripts/build_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-12 --overwrite
+
+# 校验（每个 stage 有对应 validator）
+python scripts/validate_store.py --store-root store --summary
+python scripts/validate_enriched_images.py --store-root store --summary
+python scripts/validate_monthly.py --store-root store --monthly-root monthly --month 2025-12 --summary
+python scripts/validate_chunks.py --monthly-root monthly --chunks-root llm_chunks --month 2025-12 --summary
+python scripts/validate_reports.py --chunks-root llm_chunks --reports-root reports --summary
+
+# GUI（需先安装 Rust/Cargo + Node.js）
+cd gui && npm install && npm run tauri dev           # 开发模式
+cd gui && npm run sidecar && npm run tauri:build:nsis # 打包 NSIS 安装器
 ```
 
-Ruff 按改动范围运行。全仓库 Ruff 仍有历史格式项；除非任务明确要求清理，不把它当作默认完成条件。
+**Ruff 按改动范围运行**。全仓库 Ruff 仍有历史格式项；除非任务明确要求清理，不把它当作默认完成条件。
 
-如果改动只影响一个 stage，可以先跑对应测试文件；最终合并前仍建议跑完整测试。
+## NOTES
+
+- **无 CI/CD** — 这是故意设计。所有校验本地运行，`check_open_source_readiness.py` 是公开发布前的门禁。
+- **preview/** 是死目录（`src/flomo_pipeline/preview/` 只有 `__pycache__`）— 可能是预留或已废弃，不要往里加代码。
+- **`\u2028`/`\u2029` bug (2026-06-24 修复)**: JSONL 里可能含 Unicode 行分隔符 — `common/io.py` 的 `_sanitize_jsonl_value()` 写入前转义，读取用 `split("\n")` 而非 `splitlines()`。
+- **Provider 模式**: enrich 和 report 各自独立实现 `Protocol` + `build_provider()` 工厂，不共享 provider 基类。
+- **GUI 双运行时**: 生产模式用 PyInstaller sidecar 二进制；开发模式 fallback 到本地 Python。
+- **路径安全**: `store/images/` 下图片使用相对路径，跨平台兼容。
+- 如果改动只影响一个 stage，可以先跑对应测试文件；最终合并前仍建议跑完整测试。

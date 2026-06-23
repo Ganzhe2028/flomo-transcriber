@@ -577,6 +577,12 @@ input[type="number"] {
   font-size: 13px;
 }
 
+.secondaryButton.compact.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(96, 165, 250, 0.12);
+}
+
 /* danger */
 .dangerButton {
   color: #fff;

@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   Activity,
   CheckCircle2,
+  ChevronsDown,
   FileImage,
   FolderOpen,
   Moon,
@@ -17,7 +18,7 @@ import {
   Sun,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type WorkflowAction = "first" | "daily" | "probe" | "retry";
 type Provider = "lmstudio" | "mock";
@@ -129,6 +130,8 @@ function App() {
   const [activeCommand, setActiveCommand] = useState("");
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [lastOutputPath, setLastOutputPath] = useState("");
+  const [autoScroll, setAutoScroll] = useState(true);
+  const logOutputRef = useRef<HTMLDivElement>(null);
 
   const lmstudioReady =
     settings.vlm_base_url.trim().length > 0 && settings.vlm_model.trim().length > 0;
@@ -194,6 +197,12 @@ function App() {
       setProvider("lmstudio");
     }
   }, [action]);
+
+  useEffect(() => {
+    if (autoScroll && logOutputRef.current) {
+      logOutputRef.current.scrollTop = logOutputRef.current.scrollHeight;
+    }
+  }, [logs, autoScroll]);
 
   async function loadSettings() {
     const next = await invoke<AppSettings>("read_settings");
@@ -576,17 +585,41 @@ function App() {
               <h2>运行日志</h2>
               <p>{activeCommand || "等待任务开始"}</p>
             </div>
-            <button
-              className="secondaryButton compact"
-              type="button"
-              disabled={!lastOutputPath || status === "running"}
-              onClick={() => void openOutputPath()}
-            >
-              <FolderOpen size={16} aria-hidden="true" />
-              打开结果
-            </button>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                className={`secondaryButton compact${autoScroll ? " active" : ""}`}
+                type="button"
+                title={autoScroll ? "自动滚动已开启 — 点击关闭" : "自动滚动已关闭 — 点击开启"}
+                onClick={() => setAutoScroll((prev) => !prev)}
+              >
+                {autoScroll ? (
+                  <ChevronsDown size={16} aria-hidden="true" />
+                ) : (
+                  <PauseCircle size={16} aria-hidden="true" />
+                )}
+              </button>
+              <button
+                className="secondaryButton compact"
+                type="button"
+                disabled={!lastOutputPath || status === "running"}
+                onClick={() => void openOutputPath()}
+              >
+                <FolderOpen size={16} aria-hidden="true" />
+                打开结果
+              </button>
+            </div>
           </header>
-          <div className="logOutput" aria-live="polite">
+          <div
+            className="logOutput"
+            aria-live="polite"
+            ref={logOutputRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              if (el.scrollHeight - el.scrollTop - el.clientHeight >= 30) {
+                setAutoScroll(false);
+              }
+            }}
+          >
             {logs.length === 0 ? (
               <p className="emptyLog">日志会显示在这里。</p>
             ) : (
