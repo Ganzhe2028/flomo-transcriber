@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "sidecar": "python ../scripts/build_gui_sidecar.py",
     "tauri": "set PATH=%USERPROFILE%\\.cargo\\bin;%PATH%&& tauri",
-    "tauri:build:nsis": "set PATH=%USERPROFILE%\\.cargo\\bin;%PATH%&& tauri build --bundles nsis"
+    "tauri:build:nsis": "set PATH=%USERPROFILE%\\.cargo\\bin;%PATH%&& tauri build --bundles nsis && copy /Y \"src-tauri\\target\\release\\bundle\\nsis\\flomo-transcriber_*_x64-setup.exe\" \"..\\\""
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

@@ -1,35 +1,71 @@
+/* ==========================================================================
+   flomo-transcriber — Agentic Design System (dark navy + blue accent)
+   Tauri desktop app: 3-column workspace (sidebar | control pane | log pane)
+   ========================================================================== */
+
+/* ── 1. Design tokens (dark theme, :root defaults) ─────────────────────── */
 :root {
-  font-family:
-    Inter, "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
-  color: #1e2524;
-  background: #eef2ef;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  --surface: #fbfcfa;
-  --surface-strong: #ffffff;
-  --line: #d8ded9;
-  --muted: #697471;
-  --text: #1e2524;
-  --accent: #007f73;
-  --accent-strong: #00695f;
-  --danger: #b92f2f;
-  --warning: #a86600;
-  --success: #207a44;
+  --bg: #0b1020;
+  --surface: #111827;
+  --surface-strong: #1e293b;
+  --fg: #e2e8f0;
+  --muted: #94a3b8;
+  --border: #1e293b;
+  --accent: #60a5fa;
+  --accent-strong: #3b82f6;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #22c55e;
+
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
 }
 
-* {
+/* ── 2. Light theme ────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-strong: #f1f5f9;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --accent: #3b82f6;
+  --accent-strong: #2563eb;
+}
+
+/* ── 3. Base reset ─────────────────────────────────────────────────────── */
+html {
+  height: 100vh;
+  overflow: hidden;
+}
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 body {
+  height: 100vh;
+  overflow: hidden;
   margin: 0;
-  min-width: 980px;
-  min-height: 100vh;
-  background:
-    linear-gradient(135deg, rgba(0, 127, 115, 0.08), transparent 36%),
-    linear-gradient(315deg, rgba(168, 102, 0, 0.08), transparent 42%),
-    #eef2ef;
+  font-family: var(--font-display);
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button,
@@ -40,247 +76,309 @@ select {
 
 button {
   border: 0;
+  cursor: pointer;
 }
 
+/* ── 4. Shell + workspace ──────────────────────────────────────────────── */
 .shell {
-  min-height: 100vh;
-  padding: 20px;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  padding: var(--space-5);
 }
 
 .workspace {
   display: grid;
   grid-template-columns: 230px minmax(380px, 520px) minmax(420px, 1fr);
+  grid-template-rows: 1fr;
   gap: 1px;
-  min-height: calc(100vh - 40px);
+  flex: 1;
+  border-radius: var(--radius-md);
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--line);
-  box-shadow: 0 18px 45px rgba(24, 35, 32, 0.12);
+  border: 1px solid var(--border);
+  background: var(--border);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
 }
 
 .sidebar,
 .controlPane,
 .logPane {
   background: var(--surface);
+  overflow: hidden;
+  min-height: 0;
 }
 
+/* ── 5. Sidebar ────────────────────────────────────────────────────────── */
 .sidebar {
   display: flex;
   flex-direction: column;
-  padding: 22px 16px;
+  padding: var(--space-5);
+}
+
+/* brand */
+.brandHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.themeToggle {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.themeToggle:hover {
+  background: var(--border);
 }
 
 .brand {
-  display: grid;
-  grid-template-columns: 44px 1fr;
-  gap: 12px;
+  display: flex;
   align-items: center;
-  margin-bottom: 28px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
 }
 
 .brandMark {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--accent), #818cf8);
+  color: #fff;
   display: grid;
-  width: 44px;
-  height: 44px;
   place-items: center;
-  border-radius: 8px;
-  background: #13201e;
-  color: #d8fff8;
   font-weight: 800;
-}
-
-.brand h1,
-.paneHeader h2,
-.logHeader h2,
-.sectionTitle h3 {
-  margin: 0;
-  letter-spacing: 0;
+  font-size: 18px;
+  box-shadow: 0 0 20px rgba(96, 165, 250, 0.3);
 }
 
 .brand h1 {
-  font-size: 17px;
+  font-size: 16px;
+  margin: 0;
   line-height: 1.2;
 }
 
-.brand p,
-.paneHeader p,
-.logHeader p {
-  margin: 5px 0 0;
+.brand p {
+  font-size: 11px;
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
+  margin: 2px 0 0;
 }
 
+/* action list */
 .actionList {
   display: grid;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .actionButton {
   display: grid;
   grid-template-columns: 20px 1fr;
-  gap: 9px;
+  gap: 10px;
   align-items: center;
   width: 100%;
-  height: 42px;
-  padding: 0 10px;
-  border-radius: 7px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text);
+  color: var(--muted);
   text-align: left;
-  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s;
+  position: relative;
 }
 
-.actionButton:hover:not(:disabled),
-.actionButton.active {
-  background: #e7efeb;
+.actionButton:hover:not(:disabled) {
+  background: var(--surface-strong);
+  color: var(--fg);
 }
 
 .actionButton.active {
-  color: var(--accent-strong);
+  background: rgba(96, 165, 250, 0.12);
+  color: var(--accent);
   font-weight: 700;
 }
 
-.actionButton:disabled,
-button:disabled,
-input:disabled,
-select:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
+.actionButton.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
 }
 
+.actionButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.actionButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+.actionButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* status pill + runtime */
 .statusPill {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: auto;
-  padding: 10px;
-  border-radius: 7px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
   font-size: 13px;
   color: var(--muted);
-  background: #eef3ef;
+  border: 1px solid var(--border);
 }
 
 .statusPill.good {
   color: var(--success);
-  background: #e5f4eb;
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.08);
 }
 
 .statusPill.warn {
   color: var(--warning);
-  background: #fff4df;
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.08);
 }
 
 .runtimeInfo {
-  display: grid;
-  gap: 4px;
-  margin-top: 10px;
-  padding: 10px;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
+  padding: 10px 12px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
   font-size: 12px;
+  color: var(--muted);
+  display: grid;
+  gap: 2px;
 }
 
 .runtimeInfo strong {
-  color: var(--text);
+  color: var(--fg);
   font-size: 13px;
 }
 
+/* ── 6. Control pane ───────────────────────────────────────────────────── */
 .controlPane {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.paneHeader,
-.logHeader {
+/* pane header */
+.paneHeader {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 22px;
-  border-bottom: 1px solid var(--line);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border);
 }
 
 .paneHeader h2 {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-size: 22px;
+  gap: 10px;
+  font-size: 20px;
+  margin: 0;
 }
 
+.paneHeader p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* run state badge */
 .runState {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-width: 82px;
-  justify-content: center;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 6px 12px;
   border-radius: 999px;
+  background: var(--surface-strong);
   color: var(--muted);
-  background: #edf1ee;
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
 .runState.running {
-  color: var(--accent-strong);
+  color: var(--accent);
+  background: rgba(96, 165, 250, 0.12);
 }
 
 .runState.success {
   color: var(--success);
+  background: rgba(34, 197, 94, 0.1);
 }
 
 .runState.failed {
   color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
 }
 
 .runState.cancelled {
   color: var(--warning);
+  background: rgba(245, 158, 11, 0.1);
 }
 
+/* section blocks */
 .sectionBlock {
-  padding: 18px 22px;
-  border-bottom: 1px solid var(--line);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
 }
 
 .sectionTitle {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
-  color: #27302e;
+  margin-bottom: var(--space-3);
 }
 
 .sectionTitle h3 {
-  font-size: 14px;
-}
-
-.pathField,
-.field {
-  display: grid;
-  gap: 7px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--muted);
-  font-size: 12px;
 }
 
-.pathField {
-  grid-template-columns: 86px 1fr 38px;
-  align-items: center;
-  margin-bottom: 9px;
-}
-
-.pathField span {
-  color: #3b4743;
-  font-weight: 700;
-}
-
+/* field grid + inputs */
 .fieldGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: var(--space-3);
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.field > span,
+.field > label {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .field.wide {
@@ -291,67 +389,138 @@ input,
 select {
   width: 100%;
   min-height: 38px;
-  border: 1px solid #cbd4ce;
-  border-radius: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 0 11px;
-  color: var(--text);
+  color: var(--fg);
   background: var(--surface-strong);
   outline: none;
+  font-size: 14px;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 input:focus,
 select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(0, 127, 115, 0.14);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
 }
 
+input:disabled,
+select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input[type="number"] {
+  font-family: var(--font-mono);
+}
+
+/* path field */
+.pathField {
+  display: grid;
+  grid-template-columns: 86px 1fr 38px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.pathField > span {
+  color: var(--fg);
+  font-weight: 700;
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+
+/* inline picker (image selection) */
 .inlinePicker {
   display: grid;
   grid-template-columns: 1fr 38px;
   gap: 8px;
 }
 
-.iconButton,
+/* ── 7. Collapsible sections ───────────────────────────────────────────── */
+.collapsibleSection {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-2);
+  overflow: hidden;
+}
+
+.collapsibleSection summary {
+  padding: 10px var(--space-4);
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--surface-strong);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.collapsibleSection summary:hover {
+  background: var(--border);
+}
+
+.collapsibleSection summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsibleSection summary::before {
+  content: '›';
+  display: inline-block;
+  width: 16px;
+  font-size: 18px;
+  font-weight: 400;
+  transition: transform 0.2s;
+  color: var(--muted);
+}
+
+.collapsibleSection[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.collapsibleSection .sectionBody {
+  padding: var(--space-4);
+}
+
+.collapsiblePathHint {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+  font-family: var(--font-mono);
+}
+
+/* ── 8. Buttons ────────────────────────────────────────────────────────── */
 .primaryButton,
 .secondaryButton,
-.dangerButton {
+.dangerButton,
+.iconButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 38px;
-  border-radius: 7px;
-  cursor: pointer;
-}
-
-.iconButton {
-  width: 38px;
-  color: #34413d;
-  background: #e8eeea;
-}
-
-.iconButton:hover:not(:disabled),
-.secondaryButton:hover:not(:disabled) {
-  background: #dce7e2;
-}
-
-.commandBar {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: auto;
-  padding: 18px 22px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s;
 }
 
 .primaryButton,
 .secondaryButton,
 .dangerButton {
-  padding: 0 16px;
+  padding: 0 var(--space-4);
+  min-height: 40px;
   font-weight: 700;
+  font-size: 14px;
 }
 
+/* primary */
 .primaryButton {
-  color: #ffffff;
+  color: #fff;
   background: var(--accent);
 }
 
@@ -359,9 +528,47 @@ select:focus {
   background: var(--accent-strong);
 }
 
+.primaryButton:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.primaryButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.primaryButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* primary button — large (big run button) */
+.primaryButton-large {
+  min-height: 48px;
+  padding: 0 var(--space-6);
+  font-size: 16px;
+  border-radius: var(--radius-md);
+  width: 100%;
+}
+
+/* secondary */
 .secondaryButton {
-  color: #24302c;
-  background: #e8eeea;
+  color: var(--fg);
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.secondaryButton:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.secondaryButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .secondaryButton.compact {
@@ -370,62 +577,212 @@ select:focus {
   font-size: 13px;
 }
 
+/* danger */
 .dangerButton {
-  color: #ffffff;
+  color: #fff;
   background: var(--danger);
 }
 
+.dangerButton:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.dangerButton:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* icon button */
+.iconButton {
+  width: 38px;
+  min-height: 38px;
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+}
+
+.iconButton:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--border);
+}
+
+.iconButton:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── 9. Command bar ────────────────────────────────────────────────────── */
+.commandBar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: auto;
+  padding: var(--space-4) var(--space-5);
+}
+
+.commandHint {
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 var(--space-5) var(--space-2);
+}
+
+/* ── 10. Log pane ──────────────────────────────────────────────────────── */
 .logPane {
   display: grid;
   grid-template-rows: auto 1fr;
   min-width: 0;
 }
 
-.logHeader h2 {
-  font-size: 20px;
+/* log header */
+.logHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border);
 }
 
+.logHeader h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.logHeader p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+/* log output area */
 .logOutput {
   min-height: 0;
   overflow: auto;
-  padding: 18px;
-  background: #101715;
-  color: #dbe8e3;
+  padding: var(--space-4);
+  background: #080c14;
+  color: #d1d5db;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+[data-theme="light"] .logOutput {
+  background: #1e1e1e;
+  color: #d4d4d4;
 }
 
 .emptyLog {
   margin: 0;
-  color: #82908b;
+  color: #6b7280;
+  font-style: italic;
 }
 
+/* log line */
 .logLine {
   display: grid;
-  grid-template-columns: 58px 1fr;
+  grid-template-columns: 56px 1fr;
   gap: 10px;
   align-items: start;
-  padding: 4px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  animation: logEnter 0.2s ease-out;
 }
 
 .logLine span {
-  color: #7f918b;
-  font-size: 11px;
+  color: #6b7280;
+  font-size: 10px;
   text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .logLine pre {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 1.55;
 }
 
 .logLine.stderr pre {
-  color: #ffc4bd;
+  color: #fca5a5;
 }
 
 .logLine.system pre {
-  color: #b9eadf;
+  color: #93c5fd;
+}
+
+/* ── 11. Animations ────────────────────────────────────────────────────── */
+@keyframes logEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ── 12. Save feedback ─────────────────────────────────────────────────── */
+@keyframes saveFlash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgba(96, 165, 250, 0);
+  }
+}
+
+.savePulse {
+  animation: saveFlash 0.6s ease-out;
+}
+
+/* ── 13. Misc helpers ──────────────────────────────────────────────────── */
+
+/* Scrollbar styling (WebKit) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* Selection */
+::selection {
+  background: rgba(96, 165, 250, 0.25);
+  color: var(--fg);
 }

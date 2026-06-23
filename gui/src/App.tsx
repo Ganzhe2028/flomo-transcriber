@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   FileImage,
   FolderOpen,
+  Moon,
   PauseCircle,
   Play,
   RefreshCw,
@@ -13,6 +14,7 @@ import {
   Save,
   Search,
   Settings,
+  Sun,
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -144,6 +146,20 @@ function App() {
     }
     return { label: "LM Studio 未完整配置", tone: "warn" };
   }, [action, lmstudioReady, provider]);
+
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    const stored = localStorage.getItem("flomo-theme");
+    return stored === "light" ? "light" : "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("flomo-theme", theme);
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((t) => (t === "dark" ? "light" : "dark"));
+  }
 
   useEffect(() => {
     void loadSettings();
@@ -287,12 +303,22 @@ function App() {
     <main className="shell">
       <section className="workspace">
         <aside className="sidebar" aria-label="工作流">
-          <div className="brand">
-            <div className="brandMark">ft</div>
-            <div>
-              <h1>flomo-transcriber</h1>
-              <p>{settings.project_root || "本地资料处理工具"}</p>
+          <div className="brandHeader">
+            <div className="brand">
+              <div className="brandMark">ft</div>
+              <div>
+                <h1>flomo-transcriber</h1>
+                <p>{settings.project_root || "本地资料处理工具"}</p>
+              </div>
             </div>
+            <button
+              className="themeToggle"
+              type="button"
+              title={theme === "dark" ? "切换亮色主题" : "切换暗色主题"}
+              onClick={toggleTheme}
+            >
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
           </div>
 
           <nav className="actionList">
@@ -303,6 +329,7 @@ function App() {
                 <button
                   key={key}
                   className={key === action ? "actionButton active" : "actionButton"}
+                  aria-current={key === action ? "true" : undefined}
                   disabled={status === "running"}
                   onClick={() => setAction(key)}
                   type="button"
@@ -339,41 +366,7 @@ function App() {
             </div>
           </header>
 
-          <section className="sectionBlock">
-            <div className="sectionTitle">
-              <FolderOpen size={18} aria-hidden="true" />
-              <h3>路径</h3>
-            </div>
-            <PathInput
-              label="raw"
-              value={settings.raw_root}
-              onChange={(value) => updateSettings("raw_root", value)}
-              onPick={() => void chooseDirectory("raw_root")}
-              disabled={status === "running"}
-            />
-            <PathInput
-              label="store"
-              value={settings.store_root}
-              onChange={(value) => updateSettings("store_root", value)}
-              onPick={() => void chooseDirectory("store_root")}
-              disabled={status === "running"}
-            />
-            <PathInput
-              label="monthly"
-              value={settings.monthly_root}
-              onChange={(value) => updateSettings("monthly_root", value)}
-              onPick={() => void chooseDirectory("monthly_root")}
-              disabled={status === "running"}
-            />
-            <PathInput
-              label="llm_chunks"
-              value={settings.chunks_root}
-              onChange={(value) => updateSettings("chunks_root", value)}
-              onPick={() => void chooseDirectory("chunks_root")}
-              disabled={status === "running"}
-            />
-          </section>
-
+          {/* ── 运行设置（置顶 — 每次都要调整的核心参数）── */}
           <section className="sectionBlock">
             <div className="sectionTitle">
               <Settings size={18} aria-hidden="true" />
@@ -415,7 +408,7 @@ function App() {
               )}
               {action === "probe" && (
                 <label className="field wide">
-                  <span>图片</span>
+                  <span>目标图片</span>
                   <div className="inlinePicker">
                     <input
                       value={image}
@@ -438,83 +431,142 @@ function App() {
             </div>
           </section>
 
+          {/* ── 主要操作按钮 ── */}
           <section className="sectionBlock">
-            <div className="sectionTitle">
-              <Settings size={18} aria-hidden="true" />
-              <h3>LM Studio</h3>
-            </div>
-            <div className="fieldGrid">
-              <label className="field wide">
-                <span>Base URL</span>
-                <input
-                  value={settings.vlm_base_url}
-                  disabled={status === "running"}
-                  onChange={(event) => updateSettings("vlm_base_url", event.target.value)}
-                />
-              </label>
-              <label className="field">
-                <span>视觉模型</span>
-                <input
-                  value={settings.vlm_model}
-                  disabled={status === "running"}
-                  onChange={(event) => updateSettings("vlm_model", event.target.value)}
-                  placeholder="必填"
-                />
-              </label>
-              <label className="field">
-                <span>重试模型</span>
-                <input
-                  value={settings.vlm_retry_model}
-                  disabled={status === "running"}
-                  onChange={(event) => updateSettings("vlm_retry_model", event.target.value)}
-                  placeholder="可选"
-                />
-              </label>
-              <label className="field">
-                <span>超时秒数</span>
-                <input
-                  value={settings.vlm_timeout_seconds}
-                  disabled={status === "running"}
-                  onChange={(event) => updateSettings("vlm_timeout_seconds", event.target.value)}
-                />
-              </label>
-              <label className="field">
-                <span>Max tokens</span>
-                <input
-                  value={settings.vlm_max_tokens}
-                  disabled={status === "running"}
-                  onChange={(event) => updateSettings("vlm_max_tokens", event.target.value)}
-                />
-              </label>
-            </div>
-          </section>
-
-          <footer className="commandBar">
-            <button
-              className="secondaryButton"
-              type="button"
-              disabled={status === "running"}
-              onClick={() => void saveSettings()}
-            >
-              <Save size={18} aria-hidden="true" />
-              保存配置
-            </button>
             {status === "running" ? (
-              <button className="dangerButton" type="button" onClick={() => void cancelWorkflow()}>
-                <PauseCircle size={18} aria-hidden="true" />
-                停止
+              <button
+                className="dangerButton primaryButton-large"
+                type="button"
+                onClick={() => void cancelWorkflow()}
+              >
+                <PauseCircle size={20} aria-hidden="true" />
+                停止运行
               </button>
             ) : (
               <button
-                className="primaryButton"
+                className="primaryButton primaryButton-large"
                 type="button"
                 disabled={!canRun}
                 onClick={() => void runWorkflow()}
               >
-                <Play size={18} aria-hidden="true" />
-                开始
+                <Play size={20} aria-hidden="true" />
+                开始运行
               </button>
             )}
+          </section>
+
+          {/* ── 折叠：路径配置 ── */}
+          <details className="collapsibleSection">
+            <summary>
+              <FolderOpen size={16} aria-hidden="true" />
+              路径配置
+              <span className="collapsiblePathHint">
+                raw · store · monthly · chunks
+              </span>
+            </summary>
+            <div className="sectionBody">
+              <PathInput
+                label="raw"
+                value={settings.raw_root}
+                onChange={(value) => updateSettings("raw_root", value)}
+                onPick={() => void chooseDirectory("raw_root")}
+                disabled={status === "running"}
+              />
+              <PathInput
+                label="store"
+                value={settings.store_root}
+                onChange={(value) => updateSettings("store_root", value)}
+                onPick={() => void chooseDirectory("store_root")}
+                disabled={status === "running"}
+              />
+              <PathInput
+                label="monthly"
+                value={settings.monthly_root}
+                onChange={(value) => updateSettings("monthly_root", value)}
+                onPick={() => void chooseDirectory("monthly_root")}
+                disabled={status === "running"}
+              />
+              <PathInput
+                label="llm_chunks"
+                value={settings.chunks_root}
+                onChange={(value) => updateSettings("chunks_root", value)}
+                onPick={() => void chooseDirectory("chunks_root")}
+                disabled={status === "running"}
+              />
+            </div>
+          </details>
+
+          {/* ── 折叠：LM Studio 配置 ── */}
+          <details className="collapsibleSection">
+            <summary>
+              <Settings size={16} aria-hidden="true" />
+              LM Studio 配置
+              <span className="collapsiblePathHint">
+                {settings.vlm_model || ".env"}
+              </span>
+            </summary>
+            <div className="sectionBody">
+              <div className="fieldGrid">
+                <label className="field wide">
+                  <span>Base URL</span>
+                  <input
+                    value={settings.vlm_base_url}
+                    disabled={status === "running"}
+                    onChange={(event) => updateSettings("vlm_base_url", event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>视觉模型</span>
+                  <input
+                    value={settings.vlm_model}
+                    disabled={status === "running"}
+                    onChange={(event) => updateSettings("vlm_model", event.target.value)}
+                    placeholder="必填"
+                  />
+                </label>
+                <label className="field">
+                  <span>重试模型</span>
+                  <input
+                    value={settings.vlm_retry_model}
+                    disabled={status === "running"}
+                    onChange={(event) => updateSettings("vlm_retry_model", event.target.value)}
+                    placeholder="可选"
+                  />
+                </label>
+                <label className="field">
+                  <span>超时秒数</span>
+                  <input
+                    value={settings.vlm_timeout_seconds}
+                    disabled={status === "running"}
+                    onChange={(event) => updateSettings("vlm_timeout_seconds", event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Max tokens</span>
+                  <input
+                    value={settings.vlm_max_tokens}
+                    disabled={status === "running"}
+                    onChange={(event) => updateSettings("vlm_max_tokens", event.target.value)}
+                  />
+                </label>
+              </div>
+            </div>
+          </details>
+
+          {/* ── 底部操作栏 ── */}
+          <div className="commandHint">
+            {status === "running" ? "正在执行任务…" : "配置视觉模型后即可运行"}
+          </div>
+          <footer className="commandBar">
+            <button
+              className="secondaryButton compact"
+              type="button"
+              disabled={status === "running"}
+              onClick={() => void saveSettings()}
+            >
+              <Save size={16} aria-hidden="true" />
+              保存配置
+            </button>
           </footer>
         </section>
 

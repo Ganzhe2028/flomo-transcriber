@@ -40,3 +40,5 @@ __pycache__/
 
 /reports/*
 !/reports/.gitkeep
+.opencode
+/flomo-transcriber_*_x64-setup.exe
