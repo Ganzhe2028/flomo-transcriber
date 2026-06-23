@@ -32,6 +32,9 @@
 - **修复日志面板撑爆窗口高度**：`html`、`body`、`.shell` 从 `min-height: 100vh` 改为 `height: 100vh` + `overflow: hidden`，彻底锁死视口高度，日志输出再多也不会把窗口撑高。
 - **移除终端圆点装饰**：删除 `.terminalBar` 组件及红·黄·绿圆点，终端面板更简洁。
 - **设计原型同步**：`flomo-redesign.html` 同步以上两项修正。
+- **修复 `\u2028` Unicode 行分隔符导致 JSONL 校验失败**：Flomo HTML 导出中的部分 memo 包含 Unicode LINE SEPARATOR (`\u2028`) 字符。`json.dumps(ensure_ascii=False)` 不会转义该字符（JSON 规范允许），但 `str.splitlines()` 将其视为换行符，导致一条 JSONL 记录被拆为多行、校验阶段报 10 个 JSON 解析错误。修复方案：`write_jsonl` 写入前显式转义 `\u2028`/`\u2029` 为 `\\u2028`/`\\u2029`；`read_jsonl`、`load_jsonl_for_validation`、`_load_jsonl`、`load_env_file` 共 4 处 JSONL/配置读取改用 `split("\n")` + `rstrip("\r")` 替代 `splitlines()`。
+- **修复 Sidecar 打包后每次运行弹出空终端窗口**：`build_gui_sidecar.py` 的 PyInstaller 命令增加 `--noconsole`，打包出的 exe 变为 Windows GUI 程序，不再显示空 cmd 窗口。
+- **新增 `build.bat` 一键打包脚本**：放在项目根目录，串行执行 pip 安装、npm 安装、sidecar 构建和 NSIS 安装包构建共 4 步，任一步失败即停。
 
 ## 2026-05-01 - 0.4.0 级别更新
 

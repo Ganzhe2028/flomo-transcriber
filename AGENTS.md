@@ -6,8 +6,9 @@
 
 1. `README.md` 或 `README.en.md`
 2. `pyproject.toml`
-3. 相关 stage 的 `src/flomo_pipeline/<stage>/`
-4. 对应测试文件
+3. 子模块 AGENTS.md（按需）：`src/flomo_pipeline/common/` `extract/` `enrich/` `merge/` `chunk/` `report/` `gui/` `scripts/`
+4. 相关 stage 的 `src/flomo_pipeline/<stage>/`
+5. 对应测试文件
 
 ## 当前边界
 
