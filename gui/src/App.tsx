@@ -5,6 +5,7 @@ import {
   Activity,
   CheckCircle2,
   ChevronsDown,
+  Copy,
   FileImage,
   FolderOpen,
   Moon,
@@ -305,6 +306,15 @@ function App() {
     }
   }
 
+  async function handleCopyLogs() {
+    if (logs.length === 0) return;
+    const text = logs
+      .map((line) => `[${line.stream}] ${line.text}`)
+      .join("\n");
+    await navigator.clipboard.writeText(text);
+    pushSystemLog(`已复制 ${logs.length} 条日志到剪贴板`);
+  }
+
   const selectedAction = actionMeta[action];
   const SelectedIcon = selectedAction.icon;
 
@@ -586,6 +596,15 @@ function App() {
               <p>{activeCommand || "等待任务开始"}</p>
             </div>
             <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                className="secondaryButton compact"
+                type="button"
+                disabled={logs.length === 0}
+                title="复制全部日志到剪贴板"
+                onClick={() => void handleCopyLogs()}
+              >
+                <Copy size={16} aria-hidden="true" />
+              </button>
               <button
                 className={`secondaryButton compact${autoScroll ? " active" : ""}`}
                 type="button"

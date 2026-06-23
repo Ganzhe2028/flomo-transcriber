@@ -13,6 +13,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from flomo_pipeline.workflow import (  # noqa: E402
     WorkflowOptions,
     WorkflowPaths,
+    _normalize_month,
     display_path,
     load_env_file,
     project_path,
@@ -73,7 +74,7 @@ def _prompt_action() -> str | None:
 
 def _prompt_month() -> str | None:
     month = input("Month YYYY-MM, or empty for all months: ").strip()
-    return month or None
+    return _normalize_month(month)
 
 
 def _prompt_provider() -> str:
@@ -178,6 +179,8 @@ def main() -> None:
         print("--workers must be greater than 0.", file=sys.stderr)
         raise SystemExit(2)
 
+    args_month = _normalize_month(args.month)
+
     env_file = _project_path(args.env_file)
     loaded = _load_env_file(env_file)
     if loaded:
@@ -188,7 +191,7 @@ def main() -> None:
     if action is None:
         return
 
-    month = _prompt_month() if interactive and action in {"first", "daily", "retry"} else args.month
+    month = _prompt_month() if interactive and action in {"first", "daily", "retry"} else args_month
     provider = args.provider
     if action in {"first", "daily", "retry"}:
         provider = provider or (_prompt_provider() if interactive else "lmstudio")

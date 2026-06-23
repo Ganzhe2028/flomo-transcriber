@@ -14,6 +14,7 @@ if SRC_ROOT.exists():
 from flomo_pipeline.workflow import (  # noqa: E402
     WorkflowOptions,
     WorkflowPaths,
+    _normalize_month,
     load_env_file,
     project_path,
     run_action,
@@ -51,7 +52,7 @@ def main() -> None:
     )
     options = WorkflowOptions(
         provider=args.provider,
-        month=args.month,
+        month=_normalize_month(args.month),
         image=args.image,
         rounds=args.rounds,
         workers=args.workers,

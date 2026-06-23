@@ -35,6 +35,29 @@ class WorkflowPaths:
     chunks_root: Path
 
 
+def _normalize_month(month: str | None) -> str | None:
+    """Normalize user-supplied month to zero-padded YYYY-MM format.
+
+    Accepts flexible input like ``"2026-6"`` or ``"2026-06"`` and always
+    returns ``"2026-06"`` so string comparisons against ``created_at[:7]``
+    succeed downstream.
+    """
+    if month is None:
+        return None
+    stripped = month.strip()
+    if not stripped:
+        return None
+    parts = stripped.split("-")
+    if len(parts) == 2:
+        try:
+            year = int(parts[0])
+            month_num = int(parts[1])
+            return f"{year:04d}-{month_num:02d}"
+        except (ValueError, TypeError):
+            pass
+    return stripped
+
+
 @dataclass(frozen=True)
 class WorkflowOptions:
     provider: str = "lmstudio"
