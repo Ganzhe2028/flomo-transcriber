@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -312,6 +312,74 @@ fn cancel_workflow(
 }
 
 #[tauri::command]
+fn list_available_months(raw_root: String) -> Result<Vec<String>, String> {
+    let raw = PathBuf::from(&raw_root);
+    if !raw.is_dir() {
+        return Ok(vec![]);
+    }
+
+    let mut months: BTreeSet<String> = BTreeSet::new();
+    let year_dirs = fs::read_dir(&raw)
+        .map_err(|e| format!("无法读取 raw 目录：{e}"))?;
+
+    for year_entry in year_dirs {
+        let year_entry = year_entry.map_err(|e| format!("无法读取 raw 子目录：{e}"))?;
+        if !year_entry
+            .file_type()
+            .map_err(|e| format!("无法判断文件类型：{e}"))?
+            .is_dir()
+        {
+            continue;
+        }
+        let year_name = year_entry.file_name().to_string_lossy().to_string();
+        if !year_name.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+
+        let batch_dirs = match fs::read_dir(year_entry.path()) {
+            Ok(dirs) => dirs,
+            Err(_) => continue,
+        };
+
+        for batch_entry in batch_dirs {
+            let batch_entry = match batch_entry {
+                Ok(entry) => entry,
+                Err(_) => continue,
+            };
+            if !batch_entry
+                .file_type()
+                .map_err(|_| "type error".to_string())?
+                .is_dir()
+            {
+                continue;
+            }
+            let batch_name = batch_entry.file_name().to_string_lossy().to_string();
+
+            // Extract 8-digit date from batch name like "flomo@User-20260624"
+            if let Some(month) = extract_month_from_batch(&batch_name) {
+                months.insert(month);
+            }
+        }
+    }
+
+    Ok(months.into_iter().collect())
+}
+
+fn extract_month_from_batch(name: &str) -> Option<String> {
+    // Find 8 consecutive digits → YYYYMMDD → derive YYYY-MM
+    let bytes = name.as_bytes();
+    let mut i = 0;
+    while i + 8 <= bytes.len() {
+        if bytes[i..i + 8].iter().all(|b| b.is_ascii_digit()) {
+            let date_str = &name[i..i + 8];
+            return Some(format!("{}-{}", &date_str[..4], &date_str[4..6]));
+        }
+        i += 1;
+    }
+    None
+}
+
+#[tauri::command]
 fn open_path(path: String) -> Result<(), String> {
     let target = PathBuf::from(path);
     if !target.exists() {
@@ -355,6 +423,7 @@ pub fn run() {
             save_settings,
             run_workflow,
             cancel_workflow,
+            list_available_months,
             open_path
         ])
         .run(tauri::generate_context!())

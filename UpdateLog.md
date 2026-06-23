@@ -39,6 +39,9 @@
 - **新增日志面板自动滚动切换按钮**：GUI 右侧日志面板标题栏增加切换按钮（`gui/src/App.tsx` + `gui/src/styles.css`），默认跟随最新行；向上滚动自动暂停，点击按钮手动切换。深蓝跟随态 / 灰色暂停态，用 `useRef` + `useEffect` + `onScroll` 实现。
 - **修复 `build.bat` 中文编码问题**：去除 echo 中的中文字符，避免 cmd.exe 在 GBK 环境下将 UTF-8 中文解析为乱码命令。
 - **修复 `--month` 参数非零填充月份导致所有 Stage 零记录 bug**：用户传入 `--month 2026-6`（无前导零）时，`created_at[:7]` 产出的 `2026-06` 无法匹配 `2026-6`，导致 Stage 2/3/4 全部选中 0 条记录，monthly validator 也因文件名不匹配报错。修复：新增 `_normalize_month()` 将用户输入的月份统一标准化为 `YYYY-MM`（零填充）格式，在 `flomo_sidecar.py` 和 `guide.py` 两处 CLI 入口调用。影响范围：仅 CLI 入口的参数预处理，不改变流水线内部逻辑或数据格式。
+- **新增日志面板一键复制按钮**：日志顶栏增加 📋 复制按钮（`gui/src/App.tsx`），点击将全部日志格式化为 `[stream] text` 写入剪贴板，成功后推送系统日志提示已复制条数。日志为空时按钮 disabled。
+- **月份设置改为下拉选择器**：GUI「运行设置」中月份输入框替换为 `<select>` 下拉框，自动识别 `raw/` 目录中已有数据的月份（新增 Rust 命令 `list_available_months` 扫描批量目录名提取 `YYYY-MM`）。每次任务完成后自动刷新列表。
+- **新增一键打开 raw 文件夹按钮**：GUI「运行设置」标题栏右侧增加 📂 图标按钮，直接打开 `raw_root` 目录，匹配现有 `open_path` 命令模式。
 
 ## 2026-05-01 - 0.4.0 级别更新
 

@@ -133,6 +133,7 @@ function App() {
   const [lastOutputPath, setLastOutputPath] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
   const logOutputRef = useRef<HTMLDivElement>(null);
+  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
 
   const lmstudioReady =
     settings.vlm_base_url.trim().length > 0 && settings.vlm_model.trim().length > 0;
@@ -185,6 +186,12 @@ function App() {
       const suffix =
         event.payload.code === null ? "" : `，退出码 ${event.payload.code.toString()}`;
       pushSystemLog(`任务${statusLabel(event.payload.status)}${suffix}`);
+      // Refresh available months in case new raw data was added
+      if (settings.raw_root) {
+        invoke<string[]>("list_available_months", { rawRoot: settings.raw_root })
+          .then(setAvailableMonths)
+          .catch(() => {});
+      }
     });
 
     return () => {
@@ -204,6 +211,13 @@ function App() {
       logOutputRef.current.scrollTop = logOutputRef.current.scrollHeight;
     }
   }, [logs, autoScroll]);
+
+  useEffect(() => {
+    if (!settings.raw_root) return;
+    invoke<string[]>("list_available_months", { rawRoot: settings.raw_root })
+      .then(setAvailableMonths)
+      .catch(() => setAvailableMonths([]));
+  }, [settings.raw_root]);
 
   async function loadSettings() {
     const next = await invoke<AppSettings>("read_settings");
@@ -390,16 +404,31 @@ function App() {
             <div className="sectionTitle">
               <Settings size={18} aria-hidden="true" />
               <h3>运行设置</h3>
+              <button
+                className="iconButton"
+                type="button"
+                disabled={!settings.raw_root || status === "running"}
+                title="打开 raw 文件夹"
+                onClick={() => void invoke("open_path", { path: settings.raw_root })}
+              >
+                <FolderOpen size={16} aria-hidden="true" />
+              </button>
             </div>
             <div className="fieldGrid">
               <label className="field">
                 <span>月份</span>
-                <input
+                <select
                   value={month}
                   disabled={status === "running"}
                   onChange={(event) => setMonth(event.target.value)}
-                  placeholder="全部月份"
-                />
+                >
+                  <option value="">全部月份</option>
+                  {availableMonths.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="field">
                 <span>图片处理</span>
