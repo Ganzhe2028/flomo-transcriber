@@ -189,7 +189,7 @@ function App() {
       // Refresh available months in case new raw data was added
       if (settings.raw_root) {
         invoke<string[]>("list_available_months", { rawRoot: settings.raw_root })
-          .then(setAvailableMonths)
+          .then((months) => setAvailableMonths(months.reverse()))
           .catch(() => {});
       }
     });
@@ -215,7 +215,7 @@ function App() {
   useEffect(() => {
     if (!settings.raw_root) return;
     invoke<string[]>("list_available_months", { rawRoot: settings.raw_root })
-      .then(setAvailableMonths)
+      .then((months) => setAvailableMonths(months.reverse()))
       .catch(() => setAvailableMonths([]));
   }, [settings.raw_root]);
 
